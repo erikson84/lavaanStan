@@ -6,10 +6,11 @@ dados <- HolzingerSwineford1939[, 7:15]
 
 HS.model <- ' visual  =~ x1 + x2 + x3
               textual =~ x4 + x5 + x6
-              speed   =~ x7 + x8 + x9'
+              speed   =~ x7 + x8 + x9
+'
 
 fit <- cfa(HS.model, data=HolzingerSwineford1939, meanstructure = T, group='school',
-           group.equal = c('loadings', 'intercepts', 'lv.covariances'))
+           group.equal = c('loadings', 'intercepts', 'residuals'))
 
 buildConstMatrices <- function(fit) {
   pars <- lavMatrixRepresentation(parTable(fit), add=T)
@@ -102,9 +103,13 @@ buildDataList <- function(fit, data, group) {
       groupOut <- c(groupOut, g)
     }
   }
-  out[['group']] <- c(groupOut, nrow(data))
-
-  out[['sample_cov']] <- cov(data)
+  out[['group']] <- c(groupOut, nrow(data)+1)
+  samp_cov <- list()
+  for (g in 1:out$G){
+    samp_cov[[g]] <- cov(dados[group==g, ])
+  }
+  samp_cov <- do.call(abind::abind, c(samp_cov,along=3))
+  out[['sample_cov']] <- aperm(samp_cov, c(3, 1, 2))
   out
 }
 
@@ -124,11 +129,12 @@ initf <- function(fit) {
     Nu <- as.vector(inits$nu)
     Lambda <- inits$lambda
     lambda_pos <- rep(1, dim(Lambda)[2])
-    eta <- predict(lavaanFit)
-    list(Lambda_full=Lambda, Nu_full=Nu, Alpha_full=Alpha,
-         Theta_cor=Theta_cor, Theta_tau=Theta_tau,
-         Psi_cor=Psi_cor, Psi_tau=Psi_tau, 
-         eta=eta, lambda_pos=lambda_pos)
+    eta <- predict(fit)
+    list(Lambda_full=array(Lambda, c(1, dim(Lambda))),
+         Nu_full=array(Nu, c(1, length(Nu))), Alpha_full=array(Alpha, c(1, length(Alpha))),
+         Theta_cor=array(Theta_cor, c(1, dim(Theta_cor))), Theta_tau=array(Theta_tau, c(1, length(Theta_tau))),
+         Psi_cor=array(Psi_cor, c(1, dim(Psi_cor))), Psi_tau=array(Psi_tau, c(1, length(Psi_tau))),
+         eta=eta)
   } else {
     out <- list()
     for (g in 1:groups){
@@ -164,13 +170,12 @@ initf <- function(fit) {
       }
       out$lambda_pos <- rbind(out$lambda_pos, rep(1, dim(Lambda)[2]))
     }
+    out$eta <- do.call(rbind, predict(fit))
+    out
   }
-  
-  out$eta <- do.call(rbind, predict(fit))
-  out
 }
 
 stanFit <- stan('lavaanCFA.stan', data=buildDataList(fit, dados, as.numeric(HolzingerSwineford1939$school)),
-                iter = 1000, warmup=250, chains=4, thin=3, control = list(adapt_delta=0.8),
+                iter = 1000, warmup=250, chains=4, thin=3, control = list(adapt_delta=0.85),
                 #pars=c('Alpha', 'Nu', 'Lambda', 'Psi', 'PHI', 'PPP', 'phi'),
                 init=lapply(1:4, function(x) initf(fit)))

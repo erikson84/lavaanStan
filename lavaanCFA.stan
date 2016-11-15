@@ -1,3 +1,30 @@
+functions {
+  matrix cov(matrix X) {
+    int N;
+    int K;
+    vector[rows(X)] ones;
+    vector[cols(X)] means;
+    
+    N = rows(X);
+    K = cols(X);
+
+    for (k in 1:K){
+      means[k] = mean(X[, k]);
+    }
+    
+    for (n in 1:N){
+      ones[n] = 1.0;
+    }
+    return ((X - ones * means')' * (X - ones * means')) / (N - 1);
+  }
+  
+  real Fml(matrix pop_cov, matrix samp_cov){
+    int K;
+    K = rows(pop_cov);
+    return log_determinant(pop_cov) + trace(samp_cov * inverse(pop_cov)) - log_determinant(samp_cov) - K;
+  }
+}
+
 data {
   // Basic dimension for the model
   int<lower=1> G;
@@ -52,19 +79,19 @@ data {
   int alphaEqual[alphaEqN, 4];
   
   // Sample covariance matrix (for PPC)
-  matrix[K, K] sample_cov;
+  matrix[K, K] sample_cov[G];
 }
 
 parameters {
   matrix[K, F] Lambda_full[G];
-  // Positive lambda for standardized models
-  vector<lower=0>[F] lambda_pos[G];
   vector[F] eta[N];
 
   cholesky_factor_corr[K] Theta_cor[G];
   vector<lower=0>[K] Theta_tau[G];
+  
   cholesky_factor_corr[F] Psi_cor[G];
   vector<lower=0>[F] Psi_tau[G];
+  
   vector[K] Nu_full[G];
   vector[F] Alpha_full[G];
 }
@@ -143,10 +170,9 @@ model {
     mu[g, 1:K] = Nu[g] + Lambda[g] * Alpha[g];
     mu[g, (K+1):(K+F)] = Alpha[g];
     
-    Y[(group[g]):(group[g+1])] ~ multi_normal(mu[g], Full_matrix[g]);  
+    Y[(group[g]):(group[g+1] - 1)] ~ multi_normal(mu[g], Full_matrix[g]);  
     
     to_vector(Lambda_full[g]) ~ normal(0, 3.0);
-    lambda_pos[g] ~ normal(0, 3.0);
     Psi_cor[g] ~ lkj_corr_cholesky(2.0);
     Psi_tau[g] ~ cauchy(0, 3.0);
     Theta_cor[g] ~ lkj_corr_cholesky(2.0);
@@ -158,34 +184,35 @@ model {
   
 }
 
-// generated quantities {
-//   real Chi_sample;
-//   real Chi_sim;
-//   real PPP;
-//   {
-//     matrix[N, K] sim_data;
-//     matrix[K, K] sim_cov;
-//     matrix[K, K] cov;
-//     vector[N] ones;
-//     vector[K] means;
-//     
-//     
-//     cov = Lambda * Psi * Lambda' + Theta;
-//     for (n in 1:N){
-//       sim_data[n, 1:K] = multi_normal_rng(Nu + Lambda * Alpha, cov)';
-//       ones[n] = 1.0;
-//     }
-//     
-//     for (k in 1:K){
-//         means[k] = mean(sim_data[, k]);
-//     }
-//     
-//     sim_cov = ((sim_data - ones * means')' * (sim_data - ones * means')) / (N - 1);
-//     Chi_sample = (N-1)*(log_determinant(cov) + trace(sample_cov * inverse(cov)) - log_determinant(sample_cov) - K);
-//     Chi_sim = (N-1)*(log_determinant(cov) + trace(sim_cov * inverse(cov)) - log_determinant(sim_cov) - K);
-//     PPP = Chi_sample < Chi_sim;
-//   }
-//   
-// 
-//   
-// }
+generated quantities {
+  real Chi_sample;
+  real Chi_sim;
+  real PPP;
+  vector[N] log_lik;
+  {
+    real Fml_group[G];
+    real Fml_sim_group[G];
+    
+    for (g in 1:G){
+    
+      matrix[(group[g+1] - group[g]), K] sim_data;
+      matrix[K, K] sim_cov;
+      matrix[K, K] pop_cov;
+      
+      pop_cov = Lambda[g] * Psi[g] * Lambda[g]' + Theta[g];
+      
+      for (n in 1:(group[g+1] - group[g])){
+        sim_data[n, 1:K] = multi_normal_rng(Nu[g] + Lambda[g] * Alpha[g], pop_cov)';
+        log_lik[n + (group[g] - 1)] = multi_normal_lpdf(X[n + (group[g] - 1)]|Nu[g] + Lambda[g] * Alpha[g], pop_cov);
+      }
+      sim_cov = cov(sim_data);
+      
+      Fml_group[g] = Fml(pop_cov, sample_cov[g]);
+      Fml_sim_group[g] = Fml(pop_cov, sim_cov);
+      
+    }
+    Chi_sample = (N - 1) * sum(Fml_group);
+    Chi_sim = (N - 1) * sum(Fml_sim_group);
+    PPP = Chi_sample < Chi_sim;
+  }
+}
