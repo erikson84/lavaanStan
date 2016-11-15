@@ -9,7 +9,7 @@ HS.model <- ' visual  =~ x1 + x2 + x3
               speed   =~ x7 + x8 + x9'
 
 fit <- cfa(HS.model, data=HolzingerSwineford1939, meanstructure = T, group='school',
-           group.equal = c('loadings', 'intercepts'), std.lv = T)
+           group.equal = c('loadings', 'intercepts', 'lv.covariances'))
 
 buildConstMatrices <- function(fit) {
   pars <- lavMatrixRepresentation(parTable(fit), add=T)
@@ -51,6 +51,13 @@ buildEqualConst <- function(fit) {
   matEq <- list()
   for (m in unique(tempEq[, 7])){
     matEq[[m]] <- tempEq[tempEq[, 7] == m, 1:6]
+    # Making sure we keep cov. matrices symmetric
+    if (m %in% c('psi', 'theta')) {
+      mInv <- matEq[[m]][, c(1, 3, 2, 4, 6, 5)]
+      names(mInv) <- names(matEq[[m]])
+      matFull <- rbind(matEq[[m]], mInv)
+      matEq[[m]] <- matFull[!duplicated(matFull), ]
+    }
   }
   matEq
 }
@@ -101,9 +108,9 @@ buildDataList <- function(fit, data, group) {
   out
 }
 
-initf <- function(lavaanFit) {
-  inits <- lavInspect(lavaanFit, 'est')
-  groups <- max(parTable(lavaanFit)$group)
+initf <- function(fit) {
+  inits <- lavInspect(fit, 'est')
+  groups <- max(parTable(fit)$group)
   if (groups == 1){
     Psi_cor <- inits$psi
     Psi_tau <- sqrt(diag(Psi_cor))
@@ -132,7 +139,7 @@ initf <- function(lavaanFit) {
       if (g == groups){
         out$Psi_cor <- aperm(out$Psi_cor, c(3, 1, 2))
       }
-      out$Psi_tau <- rbind(out$Psi_tau, Psi_tau+runif(1, -0.05, 0.05))
+      out$Psi_tau <- rbind(out$Psi_tau, Psi_tau)
       
       
       Theta_cor <- inits[[g]]$theta
@@ -142,16 +149,16 @@ initf <- function(lavaanFit) {
       if (g == groups){
         out$Theta_cor <- aperm(out$Theta_cor, c(3, 1, 2))
       }
-      out$Theta_tau <- rbind(out$Theta_tau, Theta_tau+runif(1, -0.05, 0.05))
+      out$Theta_tau <- rbind(out$Theta_tau, Theta_tau)
       
       Alpha <- as.vector(inits[[g]]$alpha)
-      out$Alpha_full <- rbind(out$Alpha_full, Alpha+runif(1, -0.1, 0.1))
+      out$Alpha_full <- rbind(out$Alpha_full, Alpha)
       
       Nu <- as.vector(inits[[g]]$nu)
-      out$Nu_full <- rbind(out$Nu_full, Nu+runif(1, -0.1, 0.1))
+      out$Nu_full <- rbind(out$Nu_full, Nu)
       
       Lambda <- inits[[g]]$lambda
-      out$Lambda_full <- abind::abind(out$Lambda_full, Lambda+runif(1, -0.1, 0.1), along=3)
+      out$Lambda_full <- abind::abind(out$Lambda_full, Lambda, along=3)
       if (g == groups){
         out$Lambda_full <- aperm(out$Lambda_full, c(3, 1, 2))
       }
@@ -163,8 +170,7 @@ initf <- function(lavaanFit) {
   out
 }
 
-buildDataList(fit, dados, as.numeric(HolzingerSwineford1939$school))
 stanFit <- stan('lavaanCFA.stan', data=buildDataList(fit, dados, as.numeric(HolzingerSwineford1939$school)),
-                iter = 1000, warmup=250, chains=4, thin=3, control = list(adapt_delta=0.9),
+                iter = 1000, warmup=250, chains=4, thin=3, control = list(adapt_delta=0.8),
                 #pars=c('Alpha', 'Nu', 'Lambda', 'Psi', 'PHI', 'PPP', 'phi'),
                 init=lapply(1:4, function(x) initf(fit)))
