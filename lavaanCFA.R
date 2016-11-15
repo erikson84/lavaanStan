@@ -9,7 +9,7 @@ HS.model <- ' visual  =~ x1 + x2 + x3
               speed   =~ x7 + x8 + x9'
 
 fit <- cfa(HS.model, data=HolzingerSwineford1939, meanstructure = T, group='school',
-           group.equal = c('loadings', 'intercepts'))
+           group.equal = c('loadings', 'intercepts'), std.lv = T)
 
 buildConstMatrices <- function(fit) {
   pars <- lavMatrixRepresentation(parTable(fit), add=T)
@@ -165,6 +165,6 @@ initf <- function(lavaanFit) {
 
 buildDataList(fit, dados, as.numeric(HolzingerSwineford1939$school))
 stanFit <- stan('lavaanCFA.stan', data=buildDataList(fit, dados, as.numeric(HolzingerSwineford1939$school)),
-                iter = 1000, warmup=250, chains=4, thin=3,
+                iter = 1000, warmup=250, chains=4, thin=3, control = list(adapt_delta=0.9),
                 #pars=c('Alpha', 'Nu', 'Lambda', 'Psi', 'PHI', 'PPP', 'phi'),
                 init=lapply(1:4, function(x) initf(fit)))
