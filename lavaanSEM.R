@@ -1,15 +1,23 @@
-library(rstan)
-library(lavaan)
+data("PoliticalDemocracy")
+dados <- PoliticalDemocracy[, c(9:11, 1:8)]
 
-data("HolzingerSwineford1939")
-dados <- HolzingerSwineford1939[, 7:15]
-
-HS.model <- ' visual  =~ x1 + x2 + x3
-              textual =~ x4 + x5 + x6
-              speed   =~ x7 + x8 + x9
+model <- '
+   # latent variables
+     ind60 =~ x1 + x2 + x3
+     dem60 =~ y1 + y2 + y3 + y4
+     dem65 =~ y5 + y6 + y7 + y8
+   # regressions
+     dem60 ~ ind60
+     dem65 ~ ind60 + dem60
+   # residual covariances
+     y1 ~~ y5
+     y2 ~~ y4 + y6
+     y3 ~~ y7
+     y4 ~~ y8
+     y6 ~~ y8
 '
-
-fit <- cfa(HS.model, data=HolzingerSwineford1939, meanstructure = T)
+fit <- sem(model,
+           data=PoliticalDemocracy, meanstructure = T, fixed.x=F)
 
 buildConstMatrices <- function(fit) {
   pars <- lavMatrixRepresentation(parTable(fit), add=T)
@@ -20,7 +28,14 @@ buildConstMatrices <- function(fit) {
     if (m %in% c('psi', 'theta')) {
       parTemp <- rbind(parTemp, parTemp[, c(2, 1, 3, 4)])
     }
-    parM <- array(0, apply(parTemp[, 1:3], 2, max))
+    # Beta matrix coefs
+    if (m == 'beta'){
+      fs <- length(unique(pars$lhs[pars$op=='=~']))
+      parM <- array(0, c(fs, fs, max(parTemp[, 3])))
+    } else {
+      parM <- array(0, apply(parTemp[, 1:3], 2, max))
+    }
+    
     for (idx in 1:(nrow(parTemp))) {
       sel <- parTemp[idx, 1:3]
       parM[sel[1], sel[2], sel[3]] <- parTemp[idx, 4]
@@ -127,12 +142,13 @@ initf <- function(fit) {
     Theta_tau <- sqrt(diag(Theta_cor))
     Theta_cor <- t(chol(cov2cor(matrix(Theta_cor, nrow(Theta_cor), ncol(Theta_cor)))))
     
+    Beta <- inits$beta
+    
     Alpha <- as.vector(inits$alpha)
     Nu <- as.vector(inits$nu)
     Lambda <- inits$lambda
-    lambda_pos <- rep(1, dim(Lambda)[2])
     eta <- predict(fit)
-    list(Lambda_full=array(Lambda, c(1, dim(Lambda))),
+    list(Lambda_full=array(Lambda, c(1, dim(Lambda))), Beta_full=array(Beta, c(1, dim(Beta))),
          Nu_full=array(Nu, c(1, length(Nu))), Alpha_full=array(Alpha, c(1, length(Alpha))),
          Theta_cor=array(Theta_cor, c(1, dim(Theta_cor))), Theta_tau=array(Theta_tau, c(1, length(Theta_tau))),
          Psi_cor=array(Psi_cor, c(1, dim(Psi_cor))), Psi_tau=array(Psi_tau, c(1, length(Psi_tau))),
@@ -140,13 +156,11 @@ initf <- function(fit) {
   } else {
     out <- list()
     for (g in 1:groups){
+      
       Psi_cor <- inits[[g]]$psi
       Psi_tau <- sqrt(diag(Psi_cor))
       Psi_cor <- t(chol(cov2cor(matrix(Psi_cor, nrow(Psi_cor), ncol(Psi_cor)))))
       out$Psi_cor <- abind::abind(out$Psi_cor, Psi_cor, along=3)
-      if (g == groups){
-        out$Psi_cor <- aperm(out$Psi_cor, c(3, 1, 2))
-      }
       out$Psi_tau <- rbind(out$Psi_tau, Psi_tau)
       
       
@@ -154,10 +168,11 @@ initf <- function(fit) {
       Theta_tau <- sqrt(diag(Theta_cor))
       Theta_cor <- t(chol(cov2cor(matrix(Theta_cor, nrow(Theta_cor), ncol(Theta_cor)))))
       out$Theta_cor <- abind::abind(out$Theta_cor, Theta_cor, along=3)
-      if (g == groups){
-        out$Theta_cor <- aperm(out$Theta_cor, c(3, 1, 2))
-      }
+
       out$Theta_tau <- rbind(out$Theta_tau, Theta_tau)
+      
+      Beta <- inits[[g]]$beta
+      out$Beta_full <- abind::abind(out$Beta_full, Beta, along=3)
       
       Alpha <- as.vector(inits[[g]]$alpha)
       out$Alpha_full <- rbind(out$Alpha_full, Alpha)
@@ -167,17 +182,19 @@ initf <- function(fit) {
       
       Lambda <- inits[[g]]$lambda
       out$Lambda_full <- abind::abind(out$Lambda_full, Lambda, along=3)
-      if (g == groups){
-        out$Lambda_full <- aperm(out$Lambda_full, c(3, 1, 2))
-      }
-      out$lambda_pos <- rbind(out$lambda_pos, rep(1, dim(Lambda)[2]))
     }
+    
+    out$Psi_cor <- aperm(out$Psi_cor, c(3, 1, 2))
+    out$Theta_cor <- aperm(out$Theta_cor, c(3, 1, 2))
+    out$Lambda_full <- aperm(out$Lambda_full, c(3, 1, 2))
+    out$Beta_full <- aperm(out$Beta_full, c(3, 1, 2))
+    
     out$eta <- do.call(rbind, predict(fit))
     out
   }
 }
 
-stanFit <- stan('lavaanCFA.stan', data=buildDataList(fit, dados, as.numeric(HolzingerSwineford1939$school)),
+stanFit <- stan('lavaanSEM.stan', data=buildDataList(fit, dados, rep(1, dim(dados)[1])),
                 iter = 1000, warmup=500, chains=4, thin=2, control = list(adapt_delta=0.85),
                 #pars=c('Alpha', 'Nu', 'Lambda', 'Psi', 'PHI', 'PPP', 'phi'),
                 init=lapply(1:4, function(x) initf(fit)))
