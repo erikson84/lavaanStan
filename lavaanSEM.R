@@ -1,6 +1,7 @@
 library(rstan)
 library(lavaan)
 source('utils.R')
+
 data("PoliticalDemocracy")
 dados <- PoliticalDemocracy[, c(9:11, 1:8)]
 

@@ -172,30 +172,18 @@ transformed parameters {
 }
 
 model {
-  vector[K + F] Y[N];
-  vector[K + F] mu[G];
-  matrix[K + F, K + F] Full_matrix[G];
+  vector[K] mu[G];
   matrix[F, F] Pi[G];
   matrix[F, F] covPsi[G];
-  
-  for (n in 1:N){
-    Y[n, 1:K] = X[n];
-    Y[n, (K+1):(K+F)] = eta[n];
-  }
   
   for (g in 1:G){
     Pi[g] = inverse(I - Beta[g]);
     covPsi[g] = Pi[g] * Psi[g] * Pi[g]';
     
-    Full_matrix[g, 1:K, 1:K] = Lambda[g] * covPsi[g] * Lambda[g]';
-    Full_matrix[g, (K+1):(K+F), 1:K] = covPsi[g] * Lambda[g]';
-    Full_matrix[g, 1:K, (K+1):(K+F)] = Lambda[g] * covPsi[g];
-    Full_matrix[g, (K+1):(K+F), (K+1):(K+F)] = covPsi[g];
-  
+
     mu[g, 1:K] = Nu[g] + Lambda[g] * (Pi[g] * Alpha[g]);
-    mu[g, (K+1):(K+F)] = Pi[g] * Alpha[g];
-    
-    Y[(group[g]):(group[g+1] - 1)] ~ multi_normal(mu[g], Full_matrix[g]);  
+
+    X[(group[g]):(group[g+1] - 1)] ~ multi_normal(mu[g], covPsi[g]);  
     
     to_vector(Lambda_full[g]) ~ normal(0, 3.0);
     to_vector(Beta_full[g]) ~ normal(0, 3.0);
@@ -226,8 +214,8 @@ generated quantities {
       pop_cov = Lambda[g] * (inverse(I - Beta[g]) * Psi[g] * inverse(I - Beta[g])') * Lambda[g]';
       
       for (n in 1:(group[g+1] - group[g])){
-        sim_data[n, 1:K] = multi_normal_rng(Nu[g] + Lambda[g] * Alpha[g], pop_cov)';
-        log_lik[n + (group[g] - 1)] = multi_normal_lpdf(X[n + (group[g] - 1)]|Nu[g] + Lambda[g] * Alpha[g], pop_cov);
+        sim_data[n, 1:K] = multi_normal_rng(Nu[g] + Lambda[g] * (inverse(I - Beta[g])*Alpha[g]), pop_cov)';
+        log_lik[n + (group[g] - 1)] = multi_normal_lpdf(X[n + (group[g] - 1)]|Nu[g] + Lambda[g] * (inverse(I - Beta[g])*Alpha[g]), pop_cov);
       }
       sim_cov = cov(sim_data);
       

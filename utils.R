@@ -60,7 +60,7 @@ buildEqualConst <- function(fit) {
   matEq
 }
 
-buildDataList <- function(fit, data, group) {
+buildDataList <- function(fit, data, group=rep(1, nrow(data))) {
   const <- buildConstMatrices(fit)
   equal <- buildEqualConst(fit)
   pars <- lavMatrixRepresentation(parTable(fit), add.attributes = T)
@@ -125,7 +125,12 @@ initf <- function(fit) {
     Theta_tau <- sqrt(diag(Theta_cor))
     Theta_cor <- t(chol(cov2cor(matrix(Theta_cor, nrow(Theta_cor), ncol(Theta_cor)))))
     
-    Beta <- inits$beta
+    if (!is.null(inits$beta)){
+      Beta <- inits$beta
+    } else {
+      Beta <- 0
+    }
+    
     
     Alpha <- as.vector(inits$alpha)
     Nu <- as.vector(inits$nu)
