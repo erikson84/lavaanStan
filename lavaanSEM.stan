@@ -238,8 +238,8 @@ generated quantities {
       pop_cov = Lambda[g] * (inverse(I - Beta[g]) * Psi[g] * inverse(I - Beta[g])') * Lambda[g]' + Theta[g];
       
       for (n in 1:(group[g+1] - group[g])){
-        sim_data[n, 1:K] = multi_normal_rng(Nu[g] + Lambda[g] * Alpha[g], pop_cov)';
-        log_lik[n + (group[g] - 1)] = multi_normal_lpdf(X[n + (group[g] - 1)]|Nu[g] + Lambda[g] * Alpha[g], pop_cov);
+        sim_data[n, 1:K] = multi_normal_rng(Nu[g] + Lambda[g] * (inverse(I - Beta[g]) * Alpha[g]), pop_cov)';
+        log_lik[n + (group[g] - 1)] = multi_normal_lpdf(X[n + (group[g] - 1)]|Nu[g] + Lambda[g] * (inverse(I - Beta[g]) * Alpha[g]), pop_cov);
       }
       sim_cov = cov(sim_data);
       
