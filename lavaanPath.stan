@@ -103,9 +103,6 @@ parameters {
   vector[F] eta[N];
 
   matrix[F, F] Beta_full[G];
-
-  cholesky_factor_corr[K] Theta_cor[G];
-  vector<lower=0>[K] Theta_tau[G];
   
   cholesky_factor_corr[F] Psi_cor[G];
   vector<lower=0>[F] Psi_tau[G];
@@ -117,7 +114,6 @@ parameters {
 transformed parameters {
   matrix[K, F] Lambda[G];
   matrix[F, F] Beta[G];
-  cov_matrix[K] Theta[G];
   cov_matrix[F] Psi[G];
   vector[K] Nu[G];
   vector[F] Alpha[G];
@@ -126,7 +122,6 @@ transformed parameters {
   for (g in 1:G){
     Lambda[g] = Lambda_full[g];
     Beta[g] = Beta_full[g];
-    Theta[g] = quad_form_diag(Theta_cor[g] * Theta_cor[g]', Theta_tau[g]);
     Psi[g] = quad_form_diag(Psi_cor[g] * Psi_cor[g]', Psi_tau[g]);
     Nu[g] = Nu_full[g];
     Alpha[g] = Alpha_full[g];
@@ -141,10 +136,7 @@ transformed parameters {
   if (betaN > 0) for (i in 1:betaN){
     Beta[betaPar[i, 1], betaPar[i, 2], betaPar[i, 3]] = betaConst[i];
   }
-  
-  if (thetaN > 0) for (i in 1:thetaN){
-    Theta[thetaPar[i, 1], thetaPar[i, 2], thetaPar[i, 3]] = thetaConst[i];
-  }
+
   if (psiN > 0) for (i in 1:psiN){
     Psi[psiPar[i, 1], psiPar[i, 2], psiPar[i, 3]] = psiConst[i];
   }
@@ -166,9 +158,7 @@ transformed parameters {
     Beta[betaEqual[i, 1], betaEqual[i, 2], betaEqual[i, 3]] = Beta[betaEqual[i, 4], betaEqual[i, 5], betaEqual[i, 6]];
   }
   
-  if (thetaEqN > 0) for (i in 1:thetaEqN){
-    Theta[thetaEqual[i, 1], thetaEqual[i, 2], thetaEqual[i, 3]] = Theta[thetaEqual[i, 4], thetaEqual[i, 5], thetaEqual[i, 6]];
-  }
+
   if (psiEqN > 0) for (i in 1:psiEqN){
     Psi[psiEqual[i, 1], psiEqual[i, 2], psiEqual[i, 3]] = Psi[psiEqual[i, 4], psiEqual[i, 5], psiEqual[i, 6]];
   }
@@ -197,7 +187,7 @@ model {
     Pi[g] = inverse(I - Beta[g]);
     covPsi[g] = Pi[g] * Psi[g] * Pi[g]';
     
-    Full_matrix[g, 1:K, 1:K] = Lambda[g] * covPsi[g] * Lambda[g]' + Theta[g];
+    Full_matrix[g, 1:K, 1:K] = Lambda[g] * covPsi[g] * Lambda[g]';
     Full_matrix[g, (K+1):(K+F), 1:K] = covPsi[g] * Lambda[g]';
     Full_matrix[g, 1:K, (K+1):(K+F)] = Lambda[g] * covPsi[g];
     Full_matrix[g, (K+1):(K+F), (K+1):(K+F)] = covPsi[g];
@@ -211,8 +201,6 @@ model {
     to_vector(Beta_full[g]) ~ normal(0, 3.0);
     Psi_cor[g] ~ lkj_corr_cholesky(2.0);
     Psi_tau[g] ~ cauchy(0, 3.0);
-    Theta_cor[g] ~ lkj_corr_cholesky(2.0);
-    Theta_tau[g] ~ cauchy(0, 3.0);
     Nu_full[g] ~ normal(0, 10.0);
     Alpha_full[g] ~ normal(0, 10.0);
   
@@ -235,7 +223,7 @@ generated quantities {
       matrix[K, K] sim_cov;
       matrix[K, K] pop_cov;
       
-      pop_cov = Lambda[g] * (inverse(I - Beta[g]) * Psi[g] * inverse(I - Beta[g])') * Lambda[g]' + Theta[g];
+      pop_cov = Lambda[g] * (inverse(I - Beta[g]) * Psi[g] * inverse(I - Beta[g])') * Lambda[g]';
       
       for (n in 1:(group[g+1] - group[g])){
         sim_data[n, 1:K] = multi_normal_rng(Nu[g] + Lambda[g] * Alpha[g], pop_cov)';
