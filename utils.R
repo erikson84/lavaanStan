@@ -121,9 +121,14 @@ initf <- function(fit) {
     Psi_tau <- sqrt(diag(Psi_cor))
     Psi_cor <- t(chol(cov2cor(matrix(Psi_cor, nrow(Psi_cor), ncol(Psi_cor)))))
     
-    Theta_cor <- inits$theta
-    Theta_tau <- sqrt(diag(Theta_cor))
-    Theta_cor <- t(chol(cov2cor(matrix(Theta_cor, nrow(Theta_cor), ncol(Theta_cor)))))
+    if (sum(inits$theta) != 0){
+      Theta_cor <- inits$theta
+      Theta_tau <- sqrt(diag(Theta_cor))
+      Theta_cor <- t(chol(cov2cor(matrix(Theta_cor, nrow(Theta_cor), ncol(Theta_cor)))))
+    } else {
+      Theta_cor <- 0
+      Theta_tau <- 0
+    }
     
     if (!is.null(inits$beta)){
       Beta <- inits$beta
@@ -151,10 +156,15 @@ initf <- function(fit) {
       out$Psi_cor <- abind::abind(out$Psi_cor, Psi_cor, along=3)
       out$Psi_tau <- rbind(out$Psi_tau, Psi_tau)
       
+      if (sum(inits[[g]]$theta) != 0){
+        Theta_cor <- inits[[g]]$theta
+        Theta_tau <- sqrt(diag(Theta_cor))
+        Theta_cor <- t(chol(cov2cor(matrix(Theta_cor, nrow(Theta_cor), ncol(Theta_cor)))))
+      } else {
+        Theta_cor <- 0
+        Theta_tau <- 0
+      }
       
-      Theta_cor <- inits[[g]]$theta
-      Theta_tau <- sqrt(diag(Theta_cor))
-      Theta_cor <- t(chol(cov2cor(matrix(Theta_cor, nrow(Theta_cor), ncol(Theta_cor)))))
       out$Theta_cor <- abind::abind(out$Theta_cor, Theta_cor, along=3)
       
       out$Theta_tau <- rbind(out$Theta_tau, Theta_tau)
