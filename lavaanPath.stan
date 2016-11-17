@@ -37,21 +37,6 @@ data {
   int<lower=1> group[G+1];
   
   // Constrained parameters as sparse matrices
-  // Lambda
-  int lambdaN;
-  int lambdaEqN;
-  int lambdaPar[lambdaN, 3];
-  vector[lambdaN] lambdaConst;
-  // Equality constraints
-  int lambdaEqual[lambdaEqN, 6];
-  
-  // Theta
-  int thetaN;
-  int thetaEqN;
-  int thetaPar[thetaN, 3];
-  vector[thetaN] thetaConst;
-  // Equality constraints
-  int thetaEqual[thetaEqN, 6];
   
   // Beta
   int betaN;
@@ -68,15 +53,6 @@ data {
   vector[psiN] psiConst;
   // Equality constraints
   int psiEqual[psiEqN, 6];
-  
-  
-  // Nu
-  int nuN;
-  int nuEqN;
-  int nuPar[nuN, 2];
-  vector[nuN] nuConst;
-  // Equality constraints
-  int nuEqual[nuEqN, 4];
   
   // Alpha
   int alphaN;
@@ -99,39 +75,27 @@ transformed data {
 }
 
 parameters {
-  matrix[K, F] Lambda_full[G];
-  vector[F] eta[N];
-
   matrix[F, F] Beta_full[G];
   
   cholesky_factor_corr[F] Psi_cor[G];
   vector<lower=0>[F] Psi_tau[G];
   
-  vector[K] Nu_full[G];
   vector[F] Alpha_full[G];
 }
 
 transformed parameters {
-  matrix[K, F] Lambda[G];
   matrix[F, F] Beta[G];
   cov_matrix[F] Psi[G];
-  vector[K] Nu[G];
   vector[F] Alpha[G];
   
   
   for (g in 1:G){
-    Lambda[g] = Lambda_full[g];
     Beta[g] = Beta_full[g];
     Psi[g] = quad_form_diag(Psi_cor[g] * Psi_cor[g]', Psi_tau[g]);
-    Nu[g] = Nu_full[g];
     Alpha[g] = Alpha_full[g];
   }
   
   // Set fixed value constraints
-  
-  if (lambdaN > 0) for (i in 1:lambdaN){
-    Lambda[lambdaPar[i, 1], lambdaPar[i, 2], lambdaPar[i, 3]] = lambdaConst[i];
-  }
   
   if (betaN > 0) for (i in 1:betaN){
     Beta[betaPar[i, 1], betaPar[i, 2], betaPar[i, 3]] = betaConst[i];
@@ -141,31 +105,20 @@ transformed parameters {
     Psi[psiPar[i, 1], psiPar[i, 2], psiPar[i, 3]] = psiConst[i];
   }
   
-  if (nuN > 0) for (i in 1:nuN){
-    Nu[nuPar[i, 1], nuPar[i, 2]] = nuConst[i];
-  }
   if (alphaN > 0) for (i in 1:alphaN){
     Alpha[alphaPar[i, 1], alphaPar[i, 2]] = alphaConst[i];
   }
   
   // Set equality constraints
   
-  if (lambdaEqN > 0) for (i in 1:lambdaEqN){
-    Lambda[lambdaEqual[i, 1], lambdaEqual[i, 2], lambdaEqual[i, 3]] = Lambda[lambdaEqual[i, 4], lambdaEqual[i, 5], lambdaEqual[i, 6]];
-  }
-  
   if (betaEqN > 0) for (i in 1:betaEqN){
     Beta[betaEqual[i, 1], betaEqual[i, 2], betaEqual[i, 3]] = Beta[betaEqual[i, 4], betaEqual[i, 5], betaEqual[i, 6]];
   }
   
-
   if (psiEqN > 0) for (i in 1:psiEqN){
     Psi[psiEqual[i, 1], psiEqual[i, 2], psiEqual[i, 3]] = Psi[psiEqual[i, 4], psiEqual[i, 5], psiEqual[i, 6]];
   }
   
-  if (nuEqN > 0) for (i in 1:nuEqN){
-    Nu[nuEqual[i, 1], nuEqual[i, 2]] = Nu[nuEqual[i, 3], nuEqual[i, 4]];
-  }
   if (alphaEqN > 0) for (i in 1:alphaEqN){
     Alpha[alphaEqual[i, 1], alphaEqual[i, 2]] = Alpha[alphaEqual[i, 3], alphaEqual[i, 4]];
   }
@@ -181,15 +134,13 @@ model {
     covPsi[g] = Pi[g] * Psi[g] * Pi[g]';
     
 
-    mu[g, 1:K] = Nu[g] + Lambda[g] * (Pi[g] * Alpha[g]);
+    mu[g, 1:K] = (Pi[g] * Alpha[g]);
 
     X[(group[g]):(group[g+1] - 1)] ~ multi_normal(mu[g], covPsi[g]);  
     
-    to_vector(Lambda_full[g]) ~ normal(0, 3.0);
     to_vector(Beta_full[g]) ~ normal(0, 3.0);
     Psi_cor[g] ~ lkj_corr_cholesky(2.0);
     Psi_tau[g] ~ cauchy(0, 3.0);
-    Nu_full[g] ~ normal(0, 10.0);
     Alpha_full[g] ~ normal(0, 10.0);
   
   }
@@ -211,11 +162,11 @@ generated quantities {
       matrix[K, K] sim_cov;
       matrix[K, K] pop_cov;
       
-      pop_cov = Lambda[g] * (inverse(I - Beta[g]) * Psi[g] * inverse(I - Beta[g])') * Lambda[g]';
+      pop_cov = (inverse(I - Beta[g]) * Psi[g] * inverse(I - Beta[g])');
       
       for (n in 1:(group[g+1] - group[g])){
-        sim_data[n, 1:K] = multi_normal_rng(Nu[g] + Lambda[g] * (inverse(I - Beta[g])*Alpha[g]), pop_cov)';
-        log_lik[n + (group[g] - 1)] = multi_normal_lpdf(X[n + (group[g] - 1)]|Nu[g] + Lambda[g] * (inverse(I - Beta[g])*Alpha[g]), pop_cov);
+        sim_data[n, 1:K] = multi_normal_rng((inverse(I - Beta[g])*Alpha[g]), pop_cov)';
+        log_lik[n + (group[g] - 1)] = multi_normal_lpdf(X[n + (group[g] - 1)] | (inverse(I - Beta[g])*Alpha[g]), pop_cov);
       }
       sim_cov = cov(sim_data);
       
