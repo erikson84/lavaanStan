@@ -1,4 +1,5 @@
 functions {
+  // Simple function to compute the covariance matrix, mainly for PPC
   matrix cov(matrix X) {
     int N;
     int K;
@@ -17,7 +18,7 @@ functions {
     }
     return ((X - ones * means')' * (X - ones * means')) / (N - 1);
   }
-  
+  // Compute log likelihood
   real Fml(matrix pop_cov, matrix samp_cov){
     int K;
     K = rows(pop_cov);
@@ -27,17 +28,17 @@ functions {
 
 data {
   // Basic dimension for the model
-  int<lower=1> G;
-  int<lower=1> N;
-  int<lower=3> K;
-  int<lower=1> F;
+  int<lower=1> G; // Number of independent groups (for multiple groups analyses)
+  int<lower=1> N; // Number of individuals
+  int<lower=3> K; // Number of indicator variables
+  int<lower=1> F; // Number of factors
   // The data matrix as vectors
   vector[K] X[N];
   // Vector indicating were each group starts
   int<lower=1> group[G+1];
   
   // Constrained parameters as sparse matrices
-  // Lambda
+  // Lambda (factor loadings)
   int lambdaN;
   int lambdaEqN;
   int lambdaPar[lambdaN, 3];
@@ -45,7 +46,7 @@ data {
   // Equality constraints
   int lambdaEqual[lambdaEqN, 6];
   
-  // Theta
+  // Theta (residual variances)
   int thetaN;
   int thetaEqN;
   int thetaPar[thetaN, 3];
@@ -53,7 +54,7 @@ data {
   // Equality constraints
   int thetaEqual[thetaEqN, 6];
   
-  // Psi
+  // Psi (factor covariance)
   int psiN;
   int psiEqN;
   int psiPar[psiN, 3];
@@ -62,7 +63,7 @@ data {
   int psiEqual[psiEqN, 6];
   
   
-  // Nu
+  // Nu (indicator variables means)
   int nuN;
   int nuEqN;
   int nuPar[nuN, 2];
@@ -70,7 +71,7 @@ data {
   // Equality constraints
   int nuEqual[nuEqN, 4];
   
-  // Alpha
+  // Alpha (factor means)
   int alphaN;
   int alphaEqN;
   int alphaPar[alphaN, 2];
@@ -84,7 +85,7 @@ data {
 
 parameters {
   matrix[K, F] Lambda_full[G];
-  vector[F] eta[N];
+  //vector[F] eta[N]; Will compute it in generated quantities
 
   cholesky_factor_corr[K] Theta_cor[G];
   vector<lower=0>[K] Theta_tau[G];
@@ -152,25 +153,26 @@ transformed parameters {
 }
 
 model {
-  vector[K + F] Y[N];
-  vector[K + F] mu[G];
-  matrix[K + F, K + F] Full_matrix[G];
+  //vector[K + F] Y[N];
+  vector[K] mu[G];
+  matrix[K, K] Full_matrix[G];
   
-  for (n in 1:N){
-    Y[n, 1:K] = X[n];
-    Y[n, (K+1):(K+F)] = eta[n];
-  }
+  //for (n in 1:N){
+  //  Y[n, 1:K] = X[n];
+  //  Y[n, (K+1):(K+F)] = eta[n];
+  //}
   
   for (g in 1:G){
     Full_matrix[g, 1:K, 1:K] = Lambda[g] * Psi[g] * Lambda[g]' + Theta[g];
-    Full_matrix[g, (K+1):(K+F), 1:K] = Psi[g] * Lambda[g]';
-    Full_matrix[g, 1:K, (K+1):(K+F)] = Lambda[g] * Psi[g];
-    Full_matrix[g, (K+1):(K+F), (K+1):(K+F)] = Psi[g];
+  //  Full_matrix[g, (K+1):(K+F), 1:K] = Psi[g] * Lambda[g]';
+  //  Full_matrix[g, 1:K, (K+1):(K+F)] = Lambda[g] * Psi[g];
+  //  Full_matrix[g, (K+1):(K+F), (K+1):(K+F)] = Psi[g];
   
     mu[g, 1:K] = Nu[g] + Lambda[g] * Alpha[g];
-    mu[g, (K+1):(K+F)] = Alpha[g];
+    //mu[g, (K+1):(K+F)] = Alpha[g];
     
-    Y[(group[g]):(group[g+1] - 1)] ~ multi_normal(mu[g], Full_matrix[g]);  
+    
+    X[(group[g]):(group[g+1] - 1)] ~ multi_normal(mu[g], Full_matrix[g]);  
     
     to_vector(Lambda_full[g]) ~ normal(0, 3.0);
     Psi_cor[g] ~ lkj_corr_cholesky(2.0);
@@ -189,6 +191,24 @@ generated quantities {
   real Chi_sim;
   real PPP;
   vector[N] log_lik;
+  vector[F] eta[N];
+  
+  for (g in 1:G){
+    matrix[K, F] lowerLeft;
+    matrix[F, K] upperRight;
+    matrix[K, K] Full_matrix;
+  //  Full_matrix[g, (K+1):(K+F), 1:K] = Psi[g] * Lambda[g]';
+    upperRight = Psi[g] * Lambda[g]';
+  //  Full_matrix[g, 1:K, (K+1):(K+F)] = Lambda[g] * Psi[g];
+    lowerLeft = Lambda[g] * Psi[g];
+  //  Full_matrix[g, (K+1):(K+F), (K+1):(K+F)] = Psi[g];
+    Full_matrix[1:K, 1:K] = inverse(Lambda[g] * Psi[g] * Lambda[g]' + Theta[g]);
+    for (n in group[g]:(group[g+1]-1))
+      eta[n] = multi_normal_rng(Alpha[g] + upperRight * (Full_matrix) * (X[n] - Nu[g]), 
+      Psi[g] - upperRight * (Full_matrix) * lowerLeft);
+  }
+  
+ 
   {
     real Fml_group[G];
     real Fml_sim_group[G];

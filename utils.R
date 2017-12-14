@@ -185,7 +185,8 @@ initf <- function(fit) {
     out$Psi_cor <- aperm(out$Psi_cor, c(3, 1, 2))
     out$Theta_cor <- aperm(out$Theta_cor, c(3, 1, 2))
     out$Lambda_full <- aperm(out$Lambda_full, c(3, 1, 2))
-    out$Beta_full <- aperm(out$Beta_full, c(3, 1, 2))
+    out$Beta_full <- ifelse(is.array(out$Beta_full), aperm(out$Beta_full, c(3, 1, 2)),
+                            0)
     
     out$eta <- do.call(rbind, predict(fit))
     out
