@@ -100,7 +100,7 @@ transformed data {
 
 parameters {
   matrix[K, F] Lambda_full[G];
-  vector[F] eta[N];
+  //vector[F] eta[N];
 
   matrix[F, F] Beta_full[G];
 
@@ -182,30 +182,30 @@ transformed parameters {
 }
 
 model {
-  vector[K + F] Y[N];
-  vector[K + F] mu[G];
-  matrix[K + F, K + F] Full_matrix[G];
+  //vector[K + F] Y[N];
+  vector[K] mu[G];
+  matrix[K, K] Full_matrix[G];
   matrix[F, F] Pi[G];
   matrix[F, F] covPsi[G];
   
-  for (n in 1:N){
-    Y[n, 1:K] = X[n];
-    Y[n, (K+1):(K+F)] = eta[n];
-  }
+  //for (n in 1:N){
+  //  Y[n, 1:K] = X[n];
+  //  Y[n, (K+1):(K+F)] = eta[n];
+  //}
   
   for (g in 1:G){
     Pi[g] = inverse(I - Beta[g]);
     covPsi[g] = Pi[g] * Psi[g] * Pi[g]';
     
     Full_matrix[g, 1:K, 1:K] = Lambda[g] * covPsi[g] * Lambda[g]' + Theta[g];
-    Full_matrix[g, (K+1):(K+F), 1:K] = covPsi[g] * Lambda[g]';
-    Full_matrix[g, 1:K, (K+1):(K+F)] = Lambda[g] * covPsi[g];
-    Full_matrix[g, (K+1):(K+F), (K+1):(K+F)] = covPsi[g];
+    //Full_matrix[g, (K+1):(K+F), 1:K] = covPsi[g] * Lambda[g]';
+    //Full_matrix[g, 1:K, (K+1):(K+F)] = Lambda[g] * covPsi[g];
+    //Full_matrix[g, (K+1):(K+F), (K+1):(K+F)] = covPsi[g];
   
     mu[g, 1:K] = Nu[g] + Lambda[g] * (Pi[g] * Alpha[g]);
-    mu[g, (K+1):(K+F)] = Pi[g] * Alpha[g];
+    //mu[g, (K+1):(K+F)] = Pi[g] * Alpha[g];
     
-    Y[(group[g]):(group[g+1] - 1)] ~ multi_normal(mu[g], Full_matrix[g]);  
+    X[(group[g]):(group[g+1] - 1)] ~ multi_normal(mu[g], Full_matrix[g]);  
     
     to_vector(Lambda_full[g]) ~ normal(0, 3.0);
     to_vector(Beta_full[g]) ~ normal(0, 3.0);
@@ -225,6 +225,29 @@ generated quantities {
   real Chi_sim;
   real PPP;
   vector[N] log_lik;
+  vector[F] eta[N];
+  
+    for (g in 1:G){
+    matrix[K, F] lowerLeft;
+    matrix[F, K] upperRight;
+    matrix[K, K] Full_matrix;
+    matrix[F, F] Pi;
+    matrix[F, F] covPsi;
+    
+    Pi = inverse(I - Beta[g]);
+    covPsi = Pi * Psi[g] * Pi';
+  //  Full_matrix[g, (K+1):(K+F), 1:K] = Psi[g] * Lambda[g]';
+    upperRight = covPsi * Lambda[g]';
+  //  Full_matrix[g, 1:K, (K+1):(K+F)] = Lambda[g] * Psi[g];
+    lowerLeft = Lambda[g] * covPsi;
+  //  Full_matrix[g, (K+1):(K+F), (K+1):(K+F)] = Psi[g];
+    Full_matrix[1:K, 1:K] = inverse(Lambda[g] * covPsi * Lambda[g]' + Theta[g]);
+    for (n in group[g]:(group[g+1]-1))
+      eta[n] = multi_normal_rng(Alpha[g] + upperRight * (Full_matrix) * (X[n] - Nu[g]), 
+      covPsi - upperRight * (Full_matrix) * lowerLeft);
+  }
+  
+  
   {
     real Fml_group[G];
     real Fml_sim_group[G];

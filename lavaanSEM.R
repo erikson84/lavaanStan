@@ -24,6 +24,6 @@ fit <- sem(model,
            data=PoliticalDemocracy, meanstructure = T, fixed.x=F)
 
 stanFit <- stan('lavaanSEM.stan', data=buildDataList(fit, dados, rep(1, dim(dados)[1])),
-                iter = 2000, warmup=500, chains=4, thin=3, control = list(adapt_delta=0.85),
+                iter = 1000, warmup=500, chains=4,
                 #pars=c('Alpha', 'Nu', 'Lambda', 'Psi', 'PHI', 'PPP', 'phi'),
                 init=lapply(1:4, function(x) initf(fit)))
