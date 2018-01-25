@@ -40,6 +40,7 @@ data {
   // Constrained parameters as sparse matrices
   // Lambda (factor loadings)
   int lambdaN;
+  int lambdaFree[lambdaN];
   int lambdaEqN;
   int lambdaPar[lambdaN, 3];
   vector[lambdaN] lambdaConst;
@@ -48,6 +49,7 @@ data {
   
   // Theta (residual variances)
   int thetaN;
+  int thetaFree[thetaN];
   int thetaEqN;
   int thetaPar[thetaN, 3];
   vector[thetaN] thetaConst;
@@ -56,6 +58,7 @@ data {
   
   // Psi (factor covariance)
   int psiN;
+  int psiFree[psiN];
   int psiEqN;
   int psiPar[psiN, 3];
   vector[psiN] psiConst;
@@ -65,6 +68,7 @@ data {
   
   // Nu (indicator variables means)
   int nuN;
+  int nuFree[nuN];
   int nuEqN;
   int nuPar[nuN, 2];
   vector[nuN] nuConst;
@@ -73,6 +77,7 @@ data {
   
   // Alpha (factor means)
   int alphaN;
+  int alphaFree[alphaN];
   int alphaEqN;
   int alphaPar[alphaN, 2];
   vector[alphaN] alphaConst;
@@ -83,18 +88,33 @@ data {
   matrix[K, K] sample_cov[G];
 }
 
-parameters {
-  matrix[K, F] Lambda_full[G];
-  //vector[F] eta[N]; Will compute it in generated quantities
+transformed data {
+  int diagTheta;
+  int offDiagTheta;
+  int diagPsi;
+  int offDiagPsi;
+  
+  diagTheta = 0;
+  for (i in 1:thetaN) diagTheta = diagTheta + ((thetaPar[i, 2] == thetaPar[i, 3]) && thetaFree[i] != 0);
+  offDiagTheta = 0;
+  for (i in 1:thetaN) offDiagTheta = offDiagTheta + ((thetaPar[i, 2] != thetaPar[i, 3]) && thetaFree[i] != 0);
+  diagPsi = 0;
+  for (i in 1:psiN) diagPsi = diagPsi + ((psiPar[i, 2] == psiPar[i, 3]) && psiFree[i] != 0);
+  offDiagPsi = 0;
+  for (i in 1:psiN) offDiagPsi = offDiagPsi + ((psiPar[i, 2] != psiPar[i, 3]) && psiFree[i] != 0);
+}
 
-  cholesky_factor_corr[K] Theta_cor[G];
-  vector<lower=0>[K] Theta_tau[G];
+parameters {
+  vector[max(lambdaFree)] Lambda_full;
+
+  vector<lower=0>[diagTheta] Theta_tau;
+  vector<lower=-1, upper=1>[offDiagTheta] Theta_cor;
+
+  vector<lower=0>[diagPsi] Psi_tau;
+  vector<lower=-1, upper=1>[offDiagPsi] Psi_cor;
   
-  cholesky_factor_corr[F] Psi_cor[G];
-  vector<lower=0>[F] Psi_tau[G];
-  
-  vector[K] Nu_full[G];
-  vector[F] Alpha_full[G];
+  vector[max(nuFree)] Nu_full;
+  vector[max(alphaFree)] Alpha_full;
 }
 
 transformed parameters {
@@ -104,34 +124,99 @@ transformed parameters {
   vector[K] Nu[G];
   vector[F] Alpha[G];
   
+  // Set matrix values
   
   for (g in 1:G){
-    Lambda[g] = Lambda_full[g];
-    Theta[g] = quad_form_diag(Theta_cor[g] * Theta_cor[g]', Theta_tau[g]);
-    Psi[g] = quad_form_diag(Psi_cor[g] * Psi_cor[g]', Psi_tau[g]);
-    Nu[g] = Nu_full[g];
-    Alpha[g] = Alpha_full[g];
+    for (v1 in 1:K){
+     for (v2 in 1:F){
+       Lambda[g, v1, v2] = 0.0;
+     }
+    }
   }
   
-  // Set fixed value constraints
+  for (i in 1:lambdaN){
+    if (lambdaFree[i] != 0){
+      Lambda[lambdaPar[i, 1], lambdaPar[i, 2], lambdaPar[i, 3]] = Lambda_full[lambdaFree[i]];
+    } else {
+      Lambda[lambdaPar[i, 1], lambdaPar[i, 2], lambdaPar[i, 3]] = lambdaConst[i];
+    }
+  }
+
+  for (g in 1:G){
+    for (v1 in 1:K){
+     for (v2 in 1:K){
+       Theta[g, v1, v2] = 0.0;
+     }
+    }
+  }
+
+  for (i in 1:thetaN){
+    if (thetaFree[i] != 0){
+      if (thetaPar[i, 2] == thetaPar[i, 3]){
+        Theta[thetaPar[i, 1], thetaPar[i, 2], thetaPar[i, 3]] = 
+        Theta_tau[thetaFree[i]]*Theta_tau[thetaFree[i]];
+      } else {
+        
+        Theta[thetaPar[i, 1], thetaPar[i, 2], thetaPar[i, 3]] = 
+        Theta_cor[thetaFree[i]]*
+        sqrt(Theta[thetaPar[i, 1], thetaPar[i, 2], thetaPar[i, 2]])*
+        sqrt(Theta[thetaPar[i, 1], thetaPar[i, 3], thetaPar[i, 3]]);
+        
+        Theta[thetaPar[i, 1], thetaPar[i, 3], thetaPar[i, 2]] = 
+        Theta_cor[thetaFree[i]]*
+        sqrt(Theta[thetaPar[i, 1], thetaPar[i, 2], thetaPar[i, 2]])*
+        sqrt(Theta[thetaPar[i, 1], thetaPar[i, 3], thetaPar[i, 3]]);
+      }
+    } else {
+      if (thetaPar[i, 2] == thetaPar[i, 3]){
+        Theta[thetaPar[i, 1], thetaPar[i, 2], thetaPar[i, 3]] = thetaConst[i];
+      } else {
+        Theta[thetaPar[i, 1], thetaPar[i, 2], thetaPar[i, 3]] = thetaConst[i];
+        Theta[thetaPar[i, 1], thetaPar[i, 3], thetaPar[i, 2]] = thetaConst[i];
+      }
+    }
+  }
   
-  if (lambdaN > 0) for (i in 1:lambdaN){
-    Lambda[lambdaPar[i, 1], lambdaPar[i, 2], lambdaPar[i, 3]] = lambdaConst[i];
-  }
-  if (thetaN > 0) for (i in 1:thetaN){
-    Theta[thetaPar[i, 1], thetaPar[i, 2], thetaPar[i, 3]] = thetaConst[i];
-  }
-  if (psiN > 0) for (i in 1:psiN){
-    Psi[psiPar[i, 1], psiPar[i, 2], psiPar[i, 3]] = psiConst[i];
+  for (i in 1:psiN){
+    if (psiFree[i] != 0){
+      if (psiPar[i, 2] == psiPar[i, 3]){
+        Psi[psiPar[i, 1], psiPar[i, 2], psiPar[i, 3]] = Psi_tau[psiFree[i]]*Psi_tau[psiFree[i]];
+      } else {
+        Psi[psiPar[i, 1], psiPar[i, 2], psiPar[i, 3]] = 
+        Psi_cor[psiFree[i]]*
+        sqrt(Psi[psiPar[i, 1], psiPar[i, 2], psiPar[i, 2]])*
+        sqrt(Psi[psiPar[i, 1], psiPar[i, 3], psiPar[i, 3]]);
+        
+        Psi[psiPar[i, 1], psiPar[i, 3], psiPar[i, 2]] = 
+        Psi_cor[psiFree[i]]*
+        sqrt(Psi[psiPar[i, 1], psiPar[i, 2], psiPar[i, 2]])*
+        sqrt(Psi[psiPar[i, 1], psiPar[i, 3], psiPar[i, 3]]);
+      }
+    } else {
+      if (psiPar[i, 2] == psiPar[i, 3]){
+        Psi[psiPar[i, 1], psiPar[i, 2], psiPar[i, 3]] = psiConst[i];
+      } else {
+        Psi[psiPar[i, 1], psiPar[i, 2], psiPar[i, 3]] = psiConst[i];
+        Psi[psiPar[i, 1], psiPar[i, 3], psiPar[i, 2]] = psiConst[i];
+      }
+    }
   }
   
-  if (nuN > 0) for (i in 1:nuN){
-    Nu[nuPar[i, 1], nuPar[i, 2]] = nuConst[i];
+  for (i in 1:nuN){
+    if (nuFree[i]){
+      Nu[nuPar[i, 1], nuPar[i, 2]] = Nu_full[nuFree[i]];
+    } else {
+      Nu[nuPar[i, 1], nuPar[i, 2]] = nuConst[i];
+    }
   }
-  if (alphaN > 0) for (i in 1:alphaN){
-    Alpha[alphaPar[i, 1], alphaPar[i, 2]] = alphaConst[i];
+  for (i in 1:alphaN){
+    if (alphaFree[i]){
+      Alpha[alphaPar[i, 1], alphaPar[i, 2]] = Alpha_full[alphaFree[i]];
+    } else {
+      Alpha[alphaPar[i, 1], alphaPar[i, 2]] = alphaConst[i];
+    }
   }
-  
+
   // Set equality constraints
   
   if (lambdaEqN > 0) for (i in 1:lambdaEqN){
@@ -153,36 +238,28 @@ transformed parameters {
 }
 
 model {
-  //vector[K + F] Y[N];
   vector[K] mu[G];
   matrix[K, K] Full_matrix[G];
-  
-  //for (n in 1:N){
-  //  Y[n, 1:K] = X[n];
-  //  Y[n, (K+1):(K+F)] = eta[n];
-  //}
-  
   for (g in 1:G){
     Full_matrix[g, 1:K, 1:K] = Lambda[g] * Psi[g] * Lambda[g]' + Theta[g];
-  //  Full_matrix[g, (K+1):(K+F), 1:K] = Psi[g] * Lambda[g]';
-  //  Full_matrix[g, 1:K, (K+1):(K+F)] = Lambda[g] * Psi[g];
-  //  Full_matrix[g, (K+1):(K+F), (K+1):(K+F)] = Psi[g];
-  
+    //print(Full_matrix[g]);
+    //print(Lambda[g]);
+    //print(Theta[g]);
+    //print(Psi[g]);
+
     mu[g, 1:K] = Nu[g] + Lambda[g] * Alpha[g];
-    //mu[g, (K+1):(K+F)] = Alpha[g];
-    
     
     X[(group[g]):(group[g+1] - 1)] ~ multi_normal(mu[g], Full_matrix[g]);  
-    
-    to_vector(Lambda_full[g]) ~ normal(0, 3.0);
-    Psi_cor[g] ~ lkj_corr_cholesky(2.0);
-    Psi_tau[g] ~ cauchy(0, 3.0);
-    Theta_cor[g] ~ lkj_corr_cholesky(2.0);
-    Theta_tau[g] ~ cauchy(0, 3.0);
-    Nu_full[g] ~ normal(0, 10.0);
-    Alpha_full[g] ~ normal(0, 10.0);
   
   }
+  
+    Lambda_full ~ normal(0, 3.0);
+    //Psi_cor[g] ~ normal(0, 0.5);
+    Psi_tau ~ cauchy(0, 3.0);
+    //Theta_cor[g] ~ normal(0, 0.5);
+    Theta_tau ~ cauchy(0, 3.0);
+    Nu_full ~ normal(0, 10.0);
+    Alpha_full ~ normal(0, 10.0);
   
 }
 
@@ -197,11 +274,8 @@ generated quantities {
     matrix[K, F] lowerLeft;
     matrix[F, K] upperRight;
     matrix[K, K] Full_matrix;
-  //  Full_matrix[g, (K+1):(K+F), 1:K] = Psi[g] * Lambda[g]';
     upperRight = Psi[g] * Lambda[g]';
-  //  Full_matrix[g, 1:K, (K+1):(K+F)] = Lambda[g] * Psi[g];
     lowerLeft = Lambda[g] * Psi[g];
-  //  Full_matrix[g, (K+1):(K+F), (K+1):(K+F)] = Psi[g];
     Full_matrix[1:K, 1:K] = inverse(Lambda[g] * Psi[g] * Lambda[g]' + Theta[g]);
     for (n in group[g]:(group[g+1]-1))
       eta[n] = multi_normal_rng(Alpha[g] + upperRight * (Full_matrix) * (X[n] - Nu[g]), 

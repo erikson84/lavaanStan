@@ -1,34 +1,32 @@
-
-buildConstMatrices <- function(fit) {
+buildMatrices <- function(fit) {
   pars <- lavMatrixRepresentation(parTable(fit), add.attributes = T)
-  constMat <- list()
+  mat <- list()
   for (m in attr(pars, 'mmNames')[[1]]){
-    parTemp <- with(pars[pars$mat==m,], cbind(row, col, group, ustart))
-    # Making sure we build the full matrix instead of lower triangular
-    if (m %in% c('psi', 'theta')) {
-      parTemp <- rbind(parTemp, parTemp[, c(2, 1, 3, 4)])
-    }
-    parM <- array(0, c(attr(pars, 'mmRows')[[1]][m], attr(pars, 'mmCols')[[1]][m], max(pars$group)))
-    
-    if (nrow(parTemp) > 0){
-      for (idx in 1:(nrow(parTemp))) {
-        sel <- parTemp[idx, 1:3]
-        parM[sel[1], sel[2], sel[3]] <- parTemp[idx, 4]
-      }
+    parTemp <- pars[pars$mat==m, c('row', 'col', 'group', 'ustart', 'free', 'label')]
+    colnames(parTemp) <- c('row', 'col', 'group', 'value', 'free', 'label')
+    parTemp[, 'free'] <- as.numeric(parTemp[, 'free'] > 0)
+    if (m %in% c('theta', 'psi')){
+      parTemp <- parTemp[order(parTemp[, 'group'],
+                               parTemp[, 'row'] != parTemp[, 'col']), ]
+      parTemp[parTemp[, 'free'] > 0 &
+                parTemp[, 'row'] == parTemp[, 'col'], 'free'] <- 
+        1:sum(parTemp[parTemp[, 'row'] == parTemp[, 'col'], 'free'])
+      parTemp[parTemp[, 'free'] > 0 &
+                parTemp[, 'row'] != parTemp[, 'col'], 'free'] <- 
+        1:sum(parTemp[parTemp[, 'row'] != parTemp[, 'col'], 'free'])
     } else {
-      if (m == 'lambda') {
-        for (g in dim(parM)[3]){
-          parM[, , g] <- diag(dim(parM)[1])
-        }
+      parTemp[parTemp[, 'free'] > 0, 'free'] <- 1:sum(parTemp[, 'free'])
+    }
+    parTemp[, 'value'] <- ifelse(is.na(parTemp[, 'value']), 0, parTemp[, 'value'])
+    for (l in 1:nrow(parTemp)){
+      if (parTemp$label[l] != '') {
+        parTemp$free[parTemp$label == parTemp$label[l]] <- 
+          parTemp$free[parTemp$label == parTemp$label[l]][1]
       }
     }
-    
-    outM <- reshape2::melt(parM)
-    names(outM) <- c('row', 'col', 'group', 'value')
-    outM <- outM[!is.na(outM$value), ]
-    constMat[[m]] <- outM
+    mat[[m]] <- parTemp[, -6]
   }
-  constMat
+  mat
 }
 
 buildEqualConst <- function(fit) {
@@ -61,7 +59,7 @@ buildEqualConst <- function(fit) {
 }
 
 buildDataList <- function(fit, data, group=rep(1, nrow(data))) {
-  const <- buildConstMatrices(fit)
+  const <- buildMatrices(fit)
   equal <- buildEqualConst(fit)
   pars <- lavMatrixRepresentation(parTable(fit), add.attributes = T)
   out <- list()
@@ -74,6 +72,7 @@ buildDataList <- function(fit, data, group=rep(1, nrow(data))) {
     out[[paste(m, 'EqN', sep='')]] <- ifelse(!is.null(equal[[m]]), nrow(equal[[m]]), 0)
     if (m %in% c('nu', 'alpha')){
       out[[paste(m, 'Par', sep='')]] <- const[[m]][, c('group', 'row')]
+      out[[paste(m, 'Free', sep='')]] <- const[[m]][, c('free')]
       if (!is.null(equal[[m]])){
         out[[paste(m, 'Equal', sep='')]] <- equal[[m]][, c(1, 2, 4, 5)]
       } else {
@@ -81,13 +80,14 @@ buildDataList <- function(fit, data, group=rep(1, nrow(data))) {
       }
     } else {
       out[[paste(m, 'Par', sep='')]] <- const[[m]][, c('group', 'row', 'col')]
+      out[[paste(m, 'Free', sep='')]] <- const[[m]][, c('free')]
       if (!is.null(equal[[m]])){
         out[[paste(m, 'Equal', sep='')]] <- equal[[m]]
       } else {
         out[[paste(m, 'Equal', sep='')]] <- array(0, c(0, 6))
       }
     }
-    out[[paste(m, 'Const', sep='')]] <- const[[m]][['value']]
+    out[[paste(m, 'Const', sep='')]] <- const[[m]][, 'value']
   }
   out[['X']] <- data
   out[['N']] <- nrow(data)
@@ -114,81 +114,23 @@ buildDataList <- function(fit, data, group=rep(1, nrow(data))) {
 }
 
 initf <- function(fit) {
-  inits <- lavInspect(fit, 'est')
-  groups <- max(parTable(fit)$group)
-  if (groups == 1){
-    Psi_cor <- inits$psi
-    Psi_tau <- sqrt(diag(Psi_cor))
-    Psi_cor <- t(chol(cov2cor(matrix(Psi_cor, nrow(Psi_cor), ncol(Psi_cor)))))
-    
-    if (sum(inits$theta) != 0){
-      Theta_cor <- inits$theta
-      Theta_tau <- sqrt(diag(Theta_cor))
-      Theta_cor <- t(chol(cov2cor(matrix(Theta_cor, nrow(Theta_cor), ncol(Theta_cor)))))
-    } else {
-      Theta_cor <- 0
-      Theta_tau <- 0
-    }
-    
-    if (!is.null(inits$beta)){
-      Beta <- inits$beta
-    } else {
-      Beta <- 0
-    }
-    
-    
-    Alpha <- as.vector(inits$alpha)
-    Nu <- as.vector(inits$nu)
-    Lambda <- inits$lambda
-    eta <- predict(fit)
-    list(Lambda_full=array(Lambda, c(1, dim(Lambda))), Beta_full=array(Beta, c(1, dim(Beta))),
-         Nu_full=array(Nu, c(1, length(Nu))), Alpha_full=array(Alpha, c(1, length(Alpha))),
-         Theta_cor=array(Theta_cor, c(1, dim(Theta_cor))), Theta_tau=array(Theta_tau, c(1, length(Theta_tau))),
-         Psi_cor=array(Psi_cor, c(1, dim(Psi_cor))), Psi_tau=array(Psi_tau, c(1, length(Psi_tau))),
-         eta=eta)
-  } else {
-    out <- list()
-    for (g in 1:groups){
-      
-      Psi_cor <- inits[[g]]$psi
-      Psi_tau <- sqrt(diag(Psi_cor))
-      Psi_cor <- t(chol(cov2cor(matrix(Psi_cor, nrow(Psi_cor), ncol(Psi_cor)))))
-      out$Psi_cor <- abind::abind(out$Psi_cor, Psi_cor, along=3)
-      out$Psi_tau <- rbind(out$Psi_tau, Psi_tau)
-      
-      if (sum(inits[[g]]$theta) != 0){
-        Theta_cor <- inits[[g]]$theta
-        Theta_tau <- sqrt(diag(Theta_cor))
-        Theta_cor <- t(chol(cov2cor(matrix(Theta_cor, nrow(Theta_cor), ncol(Theta_cor)))))
-      } else {
-        Theta_cor <- 0
-        Theta_tau <- 0
-      }
-      
-      out$Theta_cor <- abind::abind(out$Theta_cor, Theta_cor, along=3)
-      
-      out$Theta_tau <- rbind(out$Theta_tau, Theta_tau)
-      
-      Beta <- inits[[g]]$beta
-      out$Beta_full <- abind::abind(out$Beta_full, Beta, along=3)
-      
-      Alpha <- as.vector(inits[[g]]$alpha)
-      out$Alpha_full <- rbind(out$Alpha_full, Alpha)
-      
-      Nu <- as.vector(inits[[g]]$nu)
-      out$Nu_full <- rbind(out$Nu_full, Nu)
-      
-      Lambda <- inits[[g]]$lambda
-      out$Lambda_full <- abind::abind(out$Lambda_full, Lambda, along=3)
-    }
-    
-    out$Psi_cor <- aperm(out$Psi_cor, c(3, 1, 2))
-    out$Theta_cor <- aperm(out$Theta_cor, c(3, 1, 2))
-    out$Lambda_full <- aperm(out$Lambda_full, c(3, 1, 2))
-    out$Beta_full <- ifelse(is.array(out$Beta_full), aperm(out$Beta_full, c(3, 1, 2)),
-                            0)
-    
-    out$eta <- do.call(rbind, predict(fit))
-    out
-  }
+  pars <- lavMatrixRepresentation(parTable(fit), add.attributes = T)
+  parsStd <- standardizedSolution(fit)
+  out <- list(
+    Lambda_full = as.array(pars$est[pars$mat == 'lambda' & pars$free > 0]),
+    Nu_full = as.array(pars$est[pars$mat == 'nu' & pars$free > 0]),
+    Alpha_full = as.array(pars$est[pars$mat == 'alpha' & pars$free > 0]),
+    Theta_tau = as.array(sqrt(pars$est[pars$mat == 'theta' & pars$free > 0 & (pars$lhs == pars$rhs)])),
+    Theta_cor = as.array(parsStd$est.std[
+      apply(parsStd[, 1:3], 1, paste, collapse='') %in%
+      apply(pars[pars$mat == 'theta' & pars$free > 0 & (pars$lhs != pars$rhs), 2:4], 1, paste, collapse='')
+    ]),
+    Psi_tau = as.array(sqrt(pars$est[pars$mat == 'psi' & pars$free > 0 & (pars$lhs == pars$rhs)])),
+    Psi_cor = as.array(parsStd$est.std[
+      apply(parsStd[, 1:3], 1, paste, collapse='') %in%
+        apply(pars[pars$mat == 'psi' & pars$free > 0 & (pars$lhs != pars$rhs), 2:4], 1, paste, collapse='')
+      ]),
+    Beta_full = as.array(pars$est[pars$mat == 'beta' & pars$free > 0])
+  )
+  out
 }

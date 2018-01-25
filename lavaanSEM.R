@@ -1,5 +1,7 @@
 library(rstan)
 library(lavaan)
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
 source('utils.R')
 
 data("PoliticalDemocracy")
