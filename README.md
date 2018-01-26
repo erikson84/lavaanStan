@@ -48,3 +48,5 @@ fit <- lavaanStan(model=model, data=data, model.type='sem')
 [`lavaan`](http://lavaan.ugent.be/) (News, tutorials and support for the `lavaan` package.)
 
 [`blavaan`](https://github.com/ecmerkle/blavaan) (Another (much better and flexible) implementation of Bayesian SEM using `lavaan` syntax)
+
+[`Stan`](http://mc-stan.org/) (If you are here, `Stan` requires no instroductions)
