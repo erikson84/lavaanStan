@@ -17,9 +17,8 @@ model <- ' # direct effect
            # total effect
              total := c + (a*b)
          '
-fit <- sem(model, data = Data, meanstructure = T)
+fit <- sem(model, data = Data, meanstructure = T, fixed.x=F)
 summary(fit)
-stanFit <- stan('lavaanPath.stan', data=buildDataList(fit, Data),
-                iter = 1000, warmup=500, chains=4, thin=2, control = list(adapt_delta=0.85),
-                #pars=c('Alpha', 'Nu', 'Lambda', 'Psi', 'PHI', 'PPP', 'phi'),
+stanFit <- stan('lavaanSEM.stan', data=buildDataList(fit, Data, rep(1, nrow(Data))),
+                iter = 1000, warmup=500, chains=4, 
                 init=lapply(1:4, function(x) initf(fit)))

@@ -154,6 +154,14 @@ transformed parameters {
     }
   }
   
+  for (g in 1:G){
+    for (v1 in 1:F){
+     for (v2 in 1:F){
+       Psi[g, v1, v2] = 0.0;
+     }
+    }
+  }
+  
   for (i in 1:psiN){
     if (psiFree[i] != 0){
       if (psiPar[i, 2] == psiPar[i, 3]){
@@ -201,10 +209,6 @@ model {
   matrix[K, K] Full_matrix[G];
   for (g in 1:G){
     Full_matrix[g, 1:K, 1:K] = Lambda[g] * Psi[g] * Lambda[g]' + Theta[g];
-    //print(Full_matrix[g]);
-    //print(Lambda[g]);
-    //print(Theta[g]);
-    //print(Psi[g]);
 
     mu[g, 1:K] = Nu[g] + Lambda[g] * Alpha[g];
     

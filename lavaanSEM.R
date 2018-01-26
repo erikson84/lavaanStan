@@ -5,8 +5,8 @@ options(mc.cores = parallel::detectCores())
 source('utils.R')
 
 data("PoliticalDemocracy")
-dados <- PoliticalDemocracy[, c(9:11, 1:8)]
-
+dados <- PoliticalDemocracy
+dados$x4 <- rbinom(75, 1, 0.5)
 model <- '
    # latent variables
      ind60 =~ x1 + x2 + x3
@@ -14,7 +14,7 @@ model <- '
      dem65 =~ y5 + y6 + y7 + y8
    # regressions
      dem60 ~ ind60
-     dem65 ~ ind60 + dem60
+     dem65 ~ ind60 + dem60 + x4
    # residual covariances
      y1 ~~ y5
      y2 ~~ y4 + y6
@@ -23,9 +23,8 @@ model <- '
      y6 ~~ y8
 '
 fit <- sem(model,
-           data=PoliticalDemocracy, meanstructure = T, fixed.x=F)
+           data=dados, meanstructure = T, fixed.x=T)
 
 stanFit <- stan('lavaanSEM.stan', data=buildDataList(fit, dados, rep(1, dim(dados)[1])),
                 iter = 1000, warmup=500, chains=4,
-                #pars=c('Alpha', 'Nu', 'Lambda', 'Psi', 'PHI', 'PPP', 'phi'),
                 init=lapply(1:4, function(x) initf(fit)))

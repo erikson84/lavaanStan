@@ -1,10 +1,49 @@
+genParTable <- function(fit){
+  parEst <- lavInspect(fit, 'est', add.labels=F, drop.list.single.group = F)
+  parFree <- lavInspect(fit, 'free', add.labels=F, drop.list.single.group = F)
+  parLabs <- lavMatrixRepresentation(parTable(fit), add.attributes = T)
+  
+  out <- data.frame()
+  for (g in 1:length(parEst)){
+    outG <- data.frame()
+    for (m in names(parEst[[g]])){
+      freeTemp <- reshape2::melt(parFree[[g]][[m]], c('row', 'col'), value.name='free')
+      estTemp <- reshape2::melt(parEst[[g]][[m]], c('row', 'col'), value.name='value')
+      temp <- dplyr::full_join(freeTemp, estTemp, by=c('row', 'col'))
+      
+      if (m %in% c('theta', 'psi')){
+        temp <- temp[temp$row >= temp$col, ]
+      }
+      
+      
+      temp$mat <- m
+      temp$group <- g
+      temp$label = ''
+      if (any(parLabs[parLabs$mat == m, 'label'] != '')) {
+        pLabTemp <- parLabs[parLabs$mat == m, c('row', 'col', 'label')]
+        idx <- which(pLabTemp$label != '')
+        for (i in 1:length(idx)){
+          temp$label[which(temp$row == pLabTemp$row[idx[i]] & temp$col == pLabTemp$col[idx[i]])] <- 
+            pLabTemp$label[idx[i]]
+        }
+        
+      }
+      outG <- rbind(outG, temp)
+    }
+    out <- rbind(out, outG)
+  }
+  out$value <- ifelse(out$free != 0, NA, out$value)
+  attr(out, 'mmNames') <- unique(out$mat)
+  out
+}
+
 buildMatrices <- function(fit) {
-  pars <- lavMatrixRepresentation(parTable(fit), add.attributes = T)
+  pars <- genParTable(fit)
+  #pars <- pars[pars$op != ':=', ]
   mat <- list()
-  for (m in attr(pars, 'mmNames')[[1]]){
-    parTemp <- as.matrix(pars[pars$mat==m, c('row', 'col', 'group', 'ustart', 'free')])
+  for (m in attr(pars, 'mmNames')){
+    parTemp <- as.matrix(pars[pars$mat==m, c('row', 'col', 'group', 'value', 'free')])
     labs <- pars[pars$mat==m, 'label']
-    colnames(parTemp) <- c('row', 'col', 'group', 'value', 'free')
     parTemp[, 'free'] <- as.numeric(parTemp[, 'free'] > 0)
     
     if (sum(parTemp[, 'free']) > 0){
@@ -37,10 +76,9 @@ buildMatrices <- function(fit) {
 
 buildDataList <- function(fit, data, group=rep(1, nrow(data))) {
   const <- buildMatrices(fit)
-  pars <- lavMatrixRepresentation(parTable(fit), add.attributes = T)
+  pars <- genParTable(fit)
   out <- list()
-  # TODO Reorder data columns as needed by the model matrices
-  # TODO Reorder data rows so each group is separated, scale as appropriate
+  data <- data[order(group), lavNames(fit)]
   matNames <- names(const)
   matNames <- matNames[matNames != '']
   for (m in matNames) {
@@ -59,6 +97,12 @@ buildDataList <- function(fit, data, group=rep(1, nrow(data))) {
       out[[paste0(m, 'Diag')]] <- as.array(which(const[[m]][, 'row'] == const[[m]][, 'col']))
       out[[paste0(m, 'OffDiag')]] <- as.array(which(const[[m]][, 'row'] != const[[m]][, 'col']))
     }
+  }
+  if (!('beta' %in% matNames)) {
+    out[['betaN']] <- 0
+    out[['betaPar']] <- array(0, c(0, 3))
+    out[['betaFree']] <- array(0, 0)
+    out[['betaConst']] <- array(0, 0)
   }
   out[['X']] <- data
   out[['N']] <- nrow(data)
@@ -95,7 +139,7 @@ initf <- function(fit) {
     Theta_cor = as.array(unique(round(parsStd$est.std[
       apply(parsStd[, 1:3], 1, paste, collapse='') %in%
       apply(pars[pars$mat == 'theta' & pars$free > 0 & (pars$lhs != pars$rhs), 2:4], 1, paste, collapse='')
-    ]), digits=4)),
+    ], digits=4))),
     Psi_tau = as.array(unique(round(sqrt(pars$est[pars$mat == 'psi' & pars$free > 0 & (pars$lhs == pars$rhs)]), digits=4))),
     Psi_cor = as.array(unique(round(parsStd$est.std[
       apply(parsStd[, 1:3], 1, paste, collapse='') %in%
