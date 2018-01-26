@@ -4,18 +4,17 @@ source('utils.R')
 rstan_options(auto_write = TRUE)
 options(mc.cores = parallel::detectCores())
 data("HolzingerSwineford1939")
-dados <- HolzingerSwineford1939[, 7:15]
+dados <- HolzingerSwineford1939[, c(5, 7:15)]
 
 HS.model <- ' visual  =~ x1 + x2 + x3
               textual =~ x4 + x5 + x6
               speed   =~ x7 + x8 + x9
 '
 
-fit <- cfa(HS.model, data=HolzingerSwineford1939, meanstructure = T, group='school', 
-           group.equal='loadings')
+fit <- cfa(HS.model, data=HolzingerSwineford1939, meanstructure = T, group='school', group.equal='loadings')
 #summary(fit)
 
-stanFit <- stan('lavaanSEM.stan', data=buildDataList(fit, dados, as.numeric(HolzingerSwineford1939$school)),
+stanFit <- stan('lavaanSEM.stan', data=buildDataList(fit, scale(dados), as.numeric(HolzingerSwineford1939$school)),
                 iter = 1000, warmup=500, chains=4,
                 init=lapply(1:4, function(x) initf(fit)))
 

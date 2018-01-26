@@ -27,6 +27,7 @@ model <- '
      y6 ~~ y8
 '
 fit <- lavaanStan(model=model, data=data, model.type='sem')
+modelMatrix(fit, 'est')
 ```
 
 ## Features
@@ -42,6 +43,7 @@ fit <- lavaanStan(model=model, data=data, model.type='sem')
 * Models with observed exogenous variables;
 * Categorical indicator variables;
 * Inequality constraints;
+* Custom priors (`lavaanStan` uses "default" weakly informative priors);
 * ...
 
 ## Links

@@ -147,5 +147,7 @@ initf <- function(fit) {
       ], digits=4))),
     Beta_full = as.array(unique(round(pars$est[pars$mat == 'beta' & pars$free > 0], digits=4)))
   )
+  if (fit@Data@std.ov & length(out$Nu_full) < length(fit@Data@ov$name)) 
+    out$Nu_full <- rep(out$Nu_full, length(fit@Data@ov$name))
   out
 }
