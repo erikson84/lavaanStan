@@ -41,6 +41,7 @@ fit <- lavaanStan(model=model, data=data, model.type='sem')
 * Latent growth models;
 * Models with observed exogenous variables;
 * Categorical indicator variables;
+* Inequality constraints;
 * ...
 
 ## Links
@@ -49,4 +50,4 @@ fit <- lavaanStan(model=model, data=data, model.type='sem')
 
 [`blavaan`](https://github.com/ecmerkle/blavaan) (Another (much better and flexible) implementation of Bayesian SEM using `lavaan` syntax)
 
-[`Stan`](http://mc-stan.org/) (If you are here, `Stan` requires no instroductions)
+[`Stan`](http://mc-stan.org/) (If you are here, `Stan` requires no introductions)
