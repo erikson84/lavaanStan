@@ -24,6 +24,7 @@ functions {
     K = rows(pop_cov);
     return log_determinant(pop_cov) + trace(samp_cov * inverse(pop_cov)) - log_determinant(samp_cov) - K;
   }
+  
 }
 
 data {
@@ -41,77 +42,53 @@ data {
   // Lambda (factor loadings)
   int lambdaN;
   int lambdaFree[lambdaN];
-  int lambdaEqN;
   int lambdaPar[lambdaN, 3];
   vector[lambdaN] lambdaConst;
-  // Equality constraints
-  int lambdaEqual[lambdaEqN, 6];
   
   // Theta (residual variances)
   int thetaN;
+  int thetaDiagN;
+  int thetaOffDiagN;
+  int thetaDiag[thetaDiagN];
+  int thetaOffDiag[thetaOffDiagN];
   int thetaFree[thetaN];
-  int thetaEqN;
   int thetaPar[thetaN, 3];
   vector[thetaN] thetaConst;
-  // Equality constraints
-  int thetaEqual[thetaEqN, 6];
   
   // Psi (factor covariance)
   int psiN;
+  int psiDiagN;
+  int psiOffDiagN;
+  int psiDiag[psiDiagN];
+  int psiOffDiag[psiOffDiagN];
   int psiFree[psiN];
-  int psiEqN;
   int psiPar[psiN, 3];
   vector[psiN] psiConst;
-  // Equality constraints
-  int psiEqual[psiEqN, 6];
-  
   
   // Nu (indicator variables means)
   int nuN;
   int nuFree[nuN];
-  int nuEqN;
   int nuPar[nuN, 2];
   vector[nuN] nuConst;
-  // Equality constraints
-  int nuEqual[nuEqN, 4];
   
   // Alpha (factor means)
   int alphaN;
   int alphaFree[alphaN];
-  int alphaEqN;
   int alphaPar[alphaN, 2];
   vector[alphaN] alphaConst;
-  // Equality constraints
-  int alphaEqual[alphaEqN, 4];
   
   // Sample covariance matrix (for PPC)
   matrix[K, K] sample_cov[G];
 }
 
-transformed data {
-  int diagTheta;
-  int offDiagTheta;
-  int diagPsi;
-  int offDiagPsi;
-  
-  diagTheta = 0;
-  for (i in 1:thetaN) diagTheta = diagTheta + ((thetaPar[i, 2] == thetaPar[i, 3]) && thetaFree[i] != 0);
-  offDiagTheta = 0;
-  for (i in 1:thetaN) offDiagTheta = offDiagTheta + ((thetaPar[i, 2] != thetaPar[i, 3]) && thetaFree[i] != 0);
-  diagPsi = 0;
-  for (i in 1:psiN) diagPsi = diagPsi + ((psiPar[i, 2] == psiPar[i, 3]) && psiFree[i] != 0);
-  offDiagPsi = 0;
-  for (i in 1:psiN) offDiagPsi = offDiagPsi + ((psiPar[i, 2] != psiPar[i, 3]) && psiFree[i] != 0);
-}
-
 parameters {
   vector[max(lambdaFree)] Lambda_full;
 
-  vector<lower=0>[diagTheta] Theta_tau;
-  vector<lower=-1, upper=1>[offDiagTheta] Theta_cor;
+  vector<lower=0>[size(thetaDiag) == 0 ? 0 : max(thetaFree[thetaDiag])] Theta_tau;
+  vector<lower=-1, upper=1>[size(thetaOffDiag) == 0 ? 0 : max(thetaFree[thetaOffDiag])] Theta_cor;
 
-  vector<lower=0>[diagPsi] Psi_tau;
-  vector<lower=-1, upper=1>[offDiagPsi] Psi_cor;
+  vector<lower=0>[size(psiDiag) == 0 ? 0 : max(psiFree[psiDiag])] Psi_tau;
+  vector<lower=-1, upper=1>[size(psiOffDiag) == 0 ? 0 : max(psiFree[psiOffDiag])] Psi_cor;
   
   vector[max(nuFree)] Nu_full;
   vector[max(alphaFree)] Alpha_full;
@@ -217,24 +194,6 @@ transformed parameters {
     }
   }
 
-  // Set equality constraints
-  
-  if (lambdaEqN > 0) for (i in 1:lambdaEqN){
-    Lambda[lambdaEqual[i, 1], lambdaEqual[i, 2], lambdaEqual[i, 3]] = Lambda[lambdaEqual[i, 4], lambdaEqual[i, 5], lambdaEqual[i, 6]];
-  }
-  if (thetaEqN > 0) for (i in 1:thetaEqN){
-    Theta[thetaEqual[i, 1], thetaEqual[i, 2], thetaEqual[i, 3]] = Theta[thetaEqual[i, 4], thetaEqual[i, 5], thetaEqual[i, 6]];
-  }
-  if (psiEqN > 0) for (i in 1:psiEqN){
-    Psi[psiEqual[i, 1], psiEqual[i, 2], psiEqual[i, 3]] = Psi[psiEqual[i, 4], psiEqual[i, 5], psiEqual[i, 6]];
-  }
-  
-  if (nuEqN > 0) for (i in 1:nuEqN){
-    Nu[nuEqual[i, 1], nuEqual[i, 2]] = Nu[nuEqual[i, 3], nuEqual[i, 4]];
-  }
-  if (alphaEqN > 0) for (i in 1:alphaEqN){
-    Alpha[alphaEqual[i, 1], alphaEqual[i, 2]] = Alpha[alphaEqual[i, 3], alphaEqual[i, 4]];
-  }
 }
 
 model {

@@ -2,65 +2,41 @@ buildMatrices <- function(fit) {
   pars <- lavMatrixRepresentation(parTable(fit), add.attributes = T)
   mat <- list()
   for (m in attr(pars, 'mmNames')[[1]]){
-    parTemp <- pars[pars$mat==m, c('row', 'col', 'group', 'ustart', 'free', 'label')]
-    colnames(parTemp) <- c('row', 'col', 'group', 'value', 'free', 'label')
+    parTemp <- as.matrix(pars[pars$mat==m, c('row', 'col', 'group', 'ustart', 'free')])
+    labs <- pars[pars$mat==m, 'label']
+    colnames(parTemp) <- c('row', 'col', 'group', 'value', 'free')
     parTemp[, 'free'] <- as.numeric(parTemp[, 'free'] > 0)
-    if (m %in% c('theta', 'psi')){
-      parTemp <- parTemp[order(parTemp[, 'group'],
-                               parTemp[, 'row'] != parTemp[, 'col']), ]
-      parTemp[parTemp[, 'free'] > 0 &
-                parTemp[, 'row'] == parTemp[, 'col'], 'free'] <- 
-        1:sum(parTemp[parTemp[, 'row'] == parTemp[, 'col'], 'free'])
-      parTemp[parTemp[, 'free'] > 0 &
-                parTemp[, 'row'] != parTemp[, 'col'], 'free'] <- 
-        1:sum(parTemp[parTemp[, 'row'] != parTemp[, 'col'], 'free'])
-    } else {
-      parTemp[parTemp[, 'free'] > 0, 'free'] <- 1:sum(parTemp[, 'free'])
-    }
-    parTemp[, 'value'] <- ifelse(is.na(parTemp[, 'value']), 0, parTemp[, 'value'])
-    for (l in 1:nrow(parTemp)){
-      if (parTemp$label[l] != '') {
-        parTemp$free[parTemp$label == parTemp$label[l]] <- 
-          parTemp$free[parTemp$label == parTemp$label[l]][1]
+    
+    if (sum(parTemp[, 'free']) > 0){
+      if (m %in% c('theta', 'psi')){
+        parTemp <- parTemp[order(parTemp[, 'group'],
+                                 parTemp[, 'row'] != parTemp[, 'col']), ]
+        parTemp[parTemp[, 'free'] > 0 &
+                  (parTemp[, 'row'] == parTemp[, 'col']), 'free'] <- 
+          1:sum(parTemp[parTemp[, 'row'] == parTemp[, 'col'], 'free'])
+        parTemp[parTemp[, 'free'] > 0 &
+                  (parTemp[, 'row'] != parTemp[, 'col']), 'free'] <- 
+          1:sum(parTemp[parTemp[, 'row'] != parTemp[, 'col'], 'free'])
+      } else {
+        parTemp[parTemp[, 'free'] > 0, 'free'] <- 1:sum(parTemp[, 'free'])
       }
     }
-    mat[[m]] <- parTemp[, -6]
+    
+    parTemp[, 'value'] <- ifelse(is.na(parTemp[, 'value']), 0, parTemp[, 'value'])
+    for (l in 1:nrow(parTemp)){
+      if (labs[l] != '') {
+        parTemp[labs == labs[l], 'free'] <- 
+          parTemp[labs == labs[l], 'free'][1]
+      }
+    }
+    mat[[m]] <- parTemp
   }
   mat
 }
 
-buildEqualConst <- function(fit) {
-  pars <- lavMatrixRepresentation(parTable(fit), add=T)
-  equal <- pars[pars$op == '==', c('lhs', 'rhs')]
-  tempEq <- data.frame(array(NA, c(dim(equal)[1], 7)))
-  names(tempEq) <- c('group1', 'row1', 'col1', 'group2', 'row2', 'col2', 'mat')
-  if (nrow(equal) != 0){
-    for (c in 1:(dim(equal)[1])) {
-      idx1 <- which(pars$plabel == equal[c, 1])
-      idx2 <- which(pars$plabel == equal[c, 2])
-      tempEq[c, ] <- c( pars[idx1, 'group'], pars[idx1, 'row'], pars[idx1, 'col'],
-                        pars[idx2, 'group'], pars[idx2, 'row'], pars[idx2, 'col'], pars[idx1, 'mat'])
-    }
-  }
-  
-  
-  matEq <- list()
-  for (m in unique(tempEq[, 7])){
-    matEq[[m]] <- tempEq[tempEq[, 7] == m, 1:6]
-    # Making sure we keep cov. matrices symmetric
-    if (m %in% c('psi', 'theta')) {
-      mInv <- matEq[[m]][, c(1, 3, 2, 4, 6, 5)]
-      names(mInv) <- names(matEq[[m]])
-      matFull <- rbind(matEq[[m]], mInv)
-      matEq[[m]] <- matFull[!duplicated(matFull), ]
-    }
-  }
-  matEq
-}
 
 buildDataList <- function(fit, data, group=rep(1, nrow(data))) {
   const <- buildMatrices(fit)
-  equal <- buildEqualConst(fit)
   pars <- lavMatrixRepresentation(parTable(fit), add.attributes = T)
   out <- list()
   # TODO Reorder data columns as needed by the model matrices
@@ -68,26 +44,21 @@ buildDataList <- function(fit, data, group=rep(1, nrow(data))) {
   matNames <- names(const)
   matNames <- matNames[matNames != '']
   for (m in matNames) {
-    out[[paste(m, 'N', sep='')]] <- nrow(const[[m]])
-    out[[paste(m, 'EqN', sep='')]] <- ifelse(!is.null(equal[[m]]), nrow(equal[[m]]), 0)
+    out[[paste0(m, 'N')]] <- nrow(const[[m]])
     if (m %in% c('nu', 'alpha')){
-      out[[paste(m, 'Par', sep='')]] <- const[[m]][, c('group', 'row')]
-      out[[paste(m, 'Free', sep='')]] <- const[[m]][, c('free')]
-      if (!is.null(equal[[m]])){
-        out[[paste(m, 'Equal', sep='')]] <- equal[[m]][, c(1, 2, 4, 5)]
-      } else {
-        out[[paste(m, 'Equal', sep='')]] <- array(0, c(0, 4))
-      }
+      out[[paste0(m, 'Par')]] <- const[[m]][, c('group', 'row')]
+      out[[paste0(m, 'Free')]] <- const[[m]][, c('free')]
     } else {
-      out[[paste(m, 'Par', sep='')]] <- const[[m]][, c('group', 'row', 'col')]
-      out[[paste(m, 'Free', sep='')]] <- const[[m]][, c('free')]
-      if (!is.null(equal[[m]])){
-        out[[paste(m, 'Equal', sep='')]] <- equal[[m]]
-      } else {
-        out[[paste(m, 'Equal', sep='')]] <- array(0, c(0, 6))
-      }
+      out[[paste0(m, 'Par')]] <- const[[m]][, c('group', 'row', 'col')]
+      out[[paste0(m, 'Free')]] <- const[[m]][, c('free')]
     }
-    out[[paste(m, 'Const', sep='')]] <- const[[m]][, 'value']
+    out[[paste0(m, 'Const')]] <- const[[m]][, 'value']
+    if (m %in% c('theta', 'psi')) {
+      out[[paste0(m, 'DiagN')]] <- length(which(const[[m]][, 'row'] == const[[m]][, 'col']))
+      out[[paste0(m, 'OffDiagN')]] <- length(which(const[[m]][, 'row'] != const[[m]][, 'col']))
+      out[[paste0(m, 'Diag')]] <- as.array(which(const[[m]][, 'row'] == const[[m]][, 'col']))
+      out[[paste0(m, 'OffDiag')]] <- as.array(which(const[[m]][, 'row'] != const[[m]][, 'col']))
+    }
   }
   out[['X']] <- data
   out[['N']] <- nrow(data)
@@ -117,20 +88,20 @@ initf <- function(fit) {
   pars <- lavMatrixRepresentation(parTable(fit), add.attributes = T)
   parsStd <- standardizedSolution(fit)
   out <- list(
-    Lambda_full = as.array(pars$est[pars$mat == 'lambda' & pars$free > 0]),
-    Nu_full = as.array(pars$est[pars$mat == 'nu' & pars$free > 0]),
-    Alpha_full = as.array(pars$est[pars$mat == 'alpha' & pars$free > 0]),
-    Theta_tau = as.array(sqrt(pars$est[pars$mat == 'theta' & pars$free > 0 & (pars$lhs == pars$rhs)])),
-    Theta_cor = as.array(parsStd$est.std[
+    Lambda_full = as.array(unique(round(pars$est[pars$mat == 'lambda' & pars$free > 0], digits=4))),
+    Nu_full = as.array(unique(round(pars$est[pars$mat == 'nu' & pars$free > 0], digits=4))),
+    Alpha_full = as.array(unique(round(pars$est[pars$mat == 'alpha' & pars$free > 0], digits=4))),
+    Theta_tau = as.array(unique(round(sqrt(pars$est[pars$mat == 'theta' & pars$free > 0 & (pars$lhs == pars$rhs)]), digits=4))),
+    Theta_cor = as.array(unique(round(parsStd$est.std[
       apply(parsStd[, 1:3], 1, paste, collapse='') %in%
       apply(pars[pars$mat == 'theta' & pars$free > 0 & (pars$lhs != pars$rhs), 2:4], 1, paste, collapse='')
-    ]),
-    Psi_tau = as.array(sqrt(pars$est[pars$mat == 'psi' & pars$free > 0 & (pars$lhs == pars$rhs)])),
-    Psi_cor = as.array(parsStd$est.std[
+    ]), digits=4)),
+    Psi_tau = as.array(unique(round(sqrt(pars$est[pars$mat == 'psi' & pars$free > 0 & (pars$lhs == pars$rhs)]), digits=4))),
+    Psi_cor = as.array(unique(round(parsStd$est.std[
       apply(parsStd[, 1:3], 1, paste, collapse='') %in%
         apply(pars[pars$mat == 'psi' & pars$free > 0 & (pars$lhs != pars$rhs), 2:4], 1, paste, collapse='')
-      ]),
-    Beta_full = as.array(pars$est[pars$mat == 'beta' & pars$free > 0])
+      ], digits=4))),
+    Beta_full = as.array(unique(round(pars$est[pars$mat == 'beta' & pars$free > 0], digits=4)))
   )
   out
 }
