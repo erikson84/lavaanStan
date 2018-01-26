@@ -6,7 +6,7 @@
 
 `lavaanStan` works just like `lavaan`. Define a model using `lavaan` intuitive syntax and call `lavaanStan` function identifying the model type (CFA or SEM).
 
-``` {r}
+```r
 source(lavaanStan.R)
 
 data("PoliticalDemocracy")
