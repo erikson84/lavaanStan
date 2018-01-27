@@ -76,6 +76,7 @@ buildMatrices <- function(fit) {
 
 buildDataList <- function(fit, data, group=rep(1, nrow(data))) {
   const <- buildMatrices(fit)
+  lavMat <- lavMatrixRepresentation(parTable(fit), add.attributes = T)
   pars <- genParTable(fit)
   out <- list()
   data <- data[order(group), lavNames(fit)]
@@ -109,6 +110,7 @@ buildDataList <- function(fit, data, group=rep(1, nrow(data))) {
   out[['K']] <- ncol(data)
   out[['G']] <- max(pars$group)
   out[['F']] <- max(out[['lambdaPar']][, 3])
+  out[['exoN']] <- sum(lavMat[lavMat$mat=='psi', 'exo'])
   groupOut <- c(1)
   for (g in 2:length(group)){
     if (group[g] != group[g-1] & out[['G']] != 1){

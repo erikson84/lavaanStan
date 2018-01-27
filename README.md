@@ -33,6 +33,7 @@ modelMatrix(fit, 'est')
 ## Features
 
 * Multiple groups SEM and CFA;
+* MIMIC models (for model.type='sem' and fixed.x=TRUE);
 * User-defined equality constraints (including across groups);
 * Posterior predictive p-values based on simulated data $\chi^2$;
 * Model comparison available using LOO and WAIC (via `loo` package).
@@ -40,7 +41,7 @@ modelMatrix(fit, 'est')
 ## Not working yet
 
 * Latent growth models;
-* Models with observed exogenous variables;
+* Joint or conditional modeling with observed exogenous variables (fixed.x=TRUE works!);
 * Categorical indicator variables;
 * Inequality constraints;
 * Custom priors (`lavaanStan` uses "default" weakly informative priors);

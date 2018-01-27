@@ -95,35 +95,42 @@ parameters {
 }
 
 transformed parameters {
-  matrix[K, F] Lambda[G];
-  cov_matrix[K] Theta[G];
-  cov_matrix[F] Psi[G];
-  vector[K] Nu[G];
-  vector[F] Alpha[G];
+  matrix[max(lambdaPar[, 2]), max(lambdaPar[, 3])] Lambda[G];
+  matrix[max(thetaPar[, 2]), max(thetaPar[, 3])] Theta[G];
+  matrix[max(psiPar[, 2]), max(psiPar[, 3])] Psi[G];
+  vector[max(nuPar[, 2])] Nu[G];
+  vector[max(alphaPar[, 2])] Alpha[G];
   
   // Set matrix values
   
   for (g in 1:G){
-    for (v1 in 1:K){
-     for (v2 in 1:F){
+    for (v1 in 1:max(lambdaPar[, 2])){
+     for (v2 in 1:max(lambdaPar[, 3])){
        Lambda[g, v1, v2] = 0.0;
      }
     }
-  }
-  
+    for (v1 in 1:max(thetaPar[, 2])){
+     for (v2 in 1:max(thetaPar[, 3])){
+       Theta[g, v1, v2] = 0.0;
+      }
+    }
+    for (v1 in 1:max(psiPar[, 2])){
+     for (v2 in 1:max(psiPar[, 3])){
+       Psi[g, v1, v2] = 0.0;
+      }
+    }
+    for (v1 in 1:max(nuPar[, 2])){
+       Nu[g, v1] = 0.0;
+    }
+    for (v1 in 1:max(alphaPar[, 2])){
+       Alpha[g, v1] = 0.0;
+    }
+  }  
   for (i in 1:lambdaN){
     if (lambdaFree[i] != 0){
       Lambda[lambdaPar[i, 1], lambdaPar[i, 2], lambdaPar[i, 3]] = Lambda_full[lambdaFree[i]];
     } else {
       Lambda[lambdaPar[i, 1], lambdaPar[i, 2], lambdaPar[i, 3]] = lambdaConst[i];
-    }
-  }
-
-  for (g in 1:G){
-    for (v1 in 1:K){
-     for (v2 in 1:K){
-       Theta[g, v1, v2] = 0.0;
-     }
     }
   }
 
@@ -151,14 +158,6 @@ transformed parameters {
         Theta[thetaPar[i, 1], thetaPar[i, 2], thetaPar[i, 3]] = thetaConst[i];
         Theta[thetaPar[i, 1], thetaPar[i, 3], thetaPar[i, 2]] = thetaConst[i];
       }
-    }
-  }
-  
-  for (g in 1:G){
-    for (v1 in 1:F){
-     for (v2 in 1:F){
-       Psi[g, v1, v2] = 0.0;
-     }
     }
   }
   
@@ -231,11 +230,11 @@ generated quantities {
   real Chi_sim;
   real PPP;
   vector[N] log_lik;
-  vector[F] eta[N];
+  vector[max(psiPar[, 2])] eta[N];
   
   for (g in 1:G){
-    matrix[K, F] lowerLeft;
-    matrix[F, K] upperRight;
+    matrix[K, max(psiPar[, 2])] lowerLeft;
+    matrix[max(psiPar[, 2]), K] upperRight;
     matrix[K, K] Full_matrix;
     upperRight = Psi[g] * Lambda[g]';
     lowerLeft = Lambda[g] * Psi[g];

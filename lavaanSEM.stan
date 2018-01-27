@@ -83,6 +83,8 @@ data {
   int alphaPar[alphaN, 2];
   vector[alphaN] alphaConst;
   
+  // Number of exogenous variables
+  int exoN;
   // Sample covariance matrix (for PPC)
   matrix[K, K] sample_cov[G];
 }
@@ -265,7 +267,7 @@ generated quantities {
   real Chi_sim;
   real PPP;
   vector[N] log_lik;
-  vector[max(psiPar[, 2])] eta[N];
+  vector[max(psiPar[, 2]) - exoN] eta[N];
   
     for (g in 1:G){
     matrix[K, max(psiPar[, 2])] lowerLeft;
@@ -273,16 +275,22 @@ generated quantities {
     matrix[K, K] Full_matrix;
     matrix[max(psiPar[, 2]), max(psiPar[, 2])] Pi;
     matrix[max(psiPar[, 2]), max(psiPar[, 2])] covPsi;
-    
+    matrix[max(psiPar[, 2]) - exoN, max(psiPar[, 2]) - exoN] covPsiRed;
+
     Pi = inverse(I - Beta[g]);
     covPsi = Pi * Psi[g] * Pi';
+    covPsiRed = covPsi[1:(max(psiPar[, 2]) - exoN), 1:(max(psiPar[, 2]) - exoN)];
     upperRight = covPsi * Lambda[g]';
     lowerLeft = Lambda[g] * covPsi;
     Full_matrix[1:K, 1:K] = inverse(Lambda[g] * covPsi * Lambda[g]' + Theta[g]);
-    for (n in group[g]:(group[g+1]-1))
-      eta[n] = multi_normal_rng(Alpha[g] + upperRight * (Full_matrix) * (X[n] - Nu[g]), 
-      covPsi - upperRight * (Full_matrix) * lowerLeft);
+    for (n in group[g]:(group[g+1]-1)) {
+      eta[n] = multi_normal_rng(Alpha[g, 1:(max(alphaPar[, 2]) - exoN)] + 
+      upperRight[1:(max(psiPar[, 2]) - exoN), ] * 
+      (Full_matrix) * (X[n] - append_row(Nu[g, 1:(max(nuPar[, 2]) - exoN)],
+      Alpha[g, (max(alphaPar[, 2]) - exoN + 1):max(alphaPar[, 2])])), 
+      covPsiRed - upperRight[1:(max(psiPar[, 2]) - exoN), ] * (Full_matrix) * lowerLeft[, 1:(max(psiPar[, 2]) - exoN)]);
     }
+  }
   
   
   {

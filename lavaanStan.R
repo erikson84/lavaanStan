@@ -42,7 +42,7 @@ lavaanStan <- function(
   stanFit
 }
 
-modelMatrix <- function(fit, what) {
+modelMatrix <- function(fit, what='est') {
   sum.func <- switch(what,
                      est=mean,
                      se=sd,
